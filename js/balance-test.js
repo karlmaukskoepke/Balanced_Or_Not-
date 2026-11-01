@@ -50,10 +50,11 @@
     }
     if (!how.fromTyping) { input.value = E.fmtH(state.xh); err.textContent = ""; }
 
-    var last = view.update({ eq: q, xh: state.xh, tilt: "live" });
-    $("readout-left").textContent = M.substitutionText(q.left, state.xh);
-    $("readout-right").textContent = M.substitutionText(q.right, state.xh);
-    $("readout-result").textContent = "x = " + E.fmtH(state.xh) + ". " + M.resultText(last.cmp) + ".";
+    var x = E.fromHundredths(state.xh);
+    var last = view.update({ eq: q, x: x, style: "decimal", tilt: "live" });
+    $("readout-left").textContent = M.substitutionLine(q.left, x, "decimal");
+    $("readout-right").textContent = M.substitutionLine(q.right, x, "decimal");
+    $("readout-result").textContent = "x = " + E.fmtH(state.xh) + ". " + M.resultText(last.cmp, "decimal") + ".";
 
     var u = new URL(location.href);
     u.searchParams.set("eq", q.id);
@@ -81,10 +82,6 @@
     if (!step) return;
     e.preventDefault();
     state.xh = clampH(state.xh + step);
-    render();
-  });
-  $("x-sign").addEventListener("click", function () {
-    state.xh = state.xh === 0 ? 0 : -state.xh;
     render();
   });
 

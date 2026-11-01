@@ -77,14 +77,12 @@ const check = (ok, msg) => { console.log((ok ? "  ok  " : "  FAIL ") + msg); if 
   await open("eq=10&x=-2"); await page.screenshot({ path: path.join(OUT, "eq10-x-2.png") });
   await open("eq=11&x=2"); await page.screenshot({ path: path.join(OUT, "eq11-x2.png") });
 
-  // typing, the ± button, arrow nudges, no float artifacts
+  // typing, arrow nudges, no float artifacts
   await open("eq=1&x=0");
   await page.fill("#x-input", "0.1"); await page.keyboard.press("Shift+ArrowUp");
   check((await page.inputValue("#x-input")) === "0.11", "Shift+Up adds 0.01 in the typed box");
   await page.fill("#x-input", "0.3");
-  check((await page.textContent("#readout-left")).includes("2(0.3) + 3 = 0.6 + 3 = 3.6"), "typed 0.3: readout is exact");
-  await page.click("#x-sign");
-  check((await page.inputValue("#x-input")) === "−0.3", "± makes x negative");
+  check((await page.textContent("#readout-left")).includes("2(0.3) + 3 = 3.6"), "typed 0.3: readout is exact");
   await page.fill("#x-input", "abc");
   check((await page.textContent("#x-error")).length > 0, "a non-number shows a message");
   const allText = await page.textContent("body");
@@ -113,6 +111,8 @@ const check = (ok, msg) => { console.log((ok ? "  ok  " : "  FAIL ") + msg); if 
   const sw = await page3.evaluate(() => document.documentElement.scrollWidth);
   check(sw <= 390, "no sideways scroll at phone width (" + sw + ")");
   await page3.screenshot({ path: path.join(OUT, "phone-eq10-x4.png"), fullPage: true });
+
+  await require("./activity.cjs")(browser, base, OUT, check);
 
   await page.goto(base + "teachers.html");
   for (const href of await page.$$eval("a[href$='.pdf']", (a) => a.map((x) => x.getAttribute("href")))) {

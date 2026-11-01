@@ -8,7 +8,8 @@ straight from the `main` branch (Settings → Pages → Deploy from a branch →
 
 ## Pages
 
-- `index.html`: the start page (the student activity will live here).
+- `index.html`: the student activity (Parts 1 and 2 so far). Address options: `?all=1` unlocks every equation,
+  `?eq=4` opens equation 4, `?reset=1` clears this browser's saved progress.
 - `balance-test.html`: Stage 1 test page. Pick an equation, type or slide x. Address options: `?eq=3&x=1.33`, and
   `&rm=1` to pretend reduce-motion is on.
 - `teachers.html`: printable sheets to download.
@@ -16,9 +17,11 @@ straight from the `main` branch (Settings → Pages → Deploy from a branch →
 ## Files
 
 - `js/equations.js`: **the 12 equations** (the only file to edit to change the problems).
-- `js/exact.js`: exact arithmetic (x as whole hundredths, solutions as fractions; no floating-point values shown).
+- `js/exact.js`: exact arithmetic (every value is a fraction of whole numbers; no floating-point values shown).
 - `js/model.js`: side values, comparisons, the equation text and the substitution readout.
 - `js/balance.js`: the SVG balance.
+- `js/flow.js`: checking rules and feedback wording (guesses, sorting, the solve entry).
+- `js/activity.js`: the student page (state, saving, the prompts).
 - `js/equation-view.js`: draws an equation with blue x-terms.
 - `reference/`: the paper sheets (solving sheet, reflection page) as PDFs.
 
@@ -26,5 +29,5 @@ straight from the `main` branch (Settings → Pages → Deploy from a branch →
 
 ```
 node tests/unit.mjs        # data, arithmetic, spec section 13 checks, layout
-node tests/browser.cjs     # real-browser checks and screenshots (needs Playwright)
+node tests/browser.cjs     # real-browser walk at 1366x768 and 1366x650, screenshots (needs Playwright)
 ```

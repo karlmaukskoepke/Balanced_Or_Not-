@@ -6,19 +6,71 @@
   <title>Balanced or Not?</title>
   <link rel="stylesheet" href="css/style.css">
 </head>
-<body>
-  <header class="topbar">
-    <h1>Balanced or Not?</h1>
-    <a class="topbar-link" href="teachers.html">For teachers: printable sheets</a>
+<body class="app">
+  <header class="bar">
+    <span class="bar-title">Balanced or Not?</span>
+    <nav class="bar-nav" aria-label="Equations">
+      <button type="button" class="btn btn-nav" id="back" aria-keyshortcuts="b">&lsaquo; Back</button>
+      <span class="bar-progress" id="progress" aria-live="polite"></span>
+      <button type="button" class="btn btn-nav" id="next" aria-keyshortcuts="n">Next &rsaquo;</button>
+    </nav>
+    <div class="sortbar">
+      <button type="button" class="sortbar-toggle" id="sortbar-toggle" aria-expanded="false" aria-controls="sortbar-panel"></button>
+      <div class="sortbar-panel" id="sortbar-panel" hidden></div>
+    </div>
+    <span class="bar-tools">
+      <a href="teachers.html">Teachers</a>
+      <button type="button" class="linkish" id="start-over">Start over</button>
+    </span>
   </header>
-  <main class="page">
-    <p>The student activity is being built in stages. For now:</p>
-    <ul class="download-list">
-      <li><a href="balance-test.html">Balance test page
-        <small>Pick any of the 12 equations, type or slide a value for x, and watch the balance.</small></a></li>
-      <li><a href="teachers.html">Printable sheets for teachers
-        <small>The solving sheet and the reflection page (PDF).</small></a></li>
-    </ul>
+
+  <main class="stage">
+    <section class="col-left spot-target" aria-label="Equation and balance">
+      <div class="eq-header">
+        <span class="eq-number" id="eq-number" aria-hidden="true"></span>
+        <h1 class="eq-display" id="eq-display"></h1>
+      </div>
+      <div class="balance-box">
+        <svg id="balance" class="balance"></svg>
+      </div>
+    </section>
+
+    <section class="col-right" aria-label="Work">
+      <div class="card entry">
+        <form class="x-form" id="x-form" autocomplete="off">
+          <label for="x-input" class="x-label"><span class="eqn-x">x</span> =</label>
+          <input id="x-input" class="x-input" type="text" inputmode="text" spellcheck="false" autocomplete="off">
+          <button type="submit" class="btn" id="x-try">Try it</button>
+          <p class="msg" id="x-msg" aria-live="polite"></p>
+        </form>
+        <div class="slider-row spot-target" id="slider-row">
+          <span class="slider-end" id="slider-min"></span>
+          <input id="x-slider" class="x-slider" type="range" step="0.01" aria-label="Slider for x">
+          <span class="slider-end" id="slider-max"></span>
+          <span class="slider-lock" id="slider-lock">Locked</span>
+          <p class="spot-msg" id="spot-msg" role="alert"></p>
+        </div>
+      </div>
+
+      <div class="card log-card">
+        <table class="log" id="log">
+          <caption class="sr-only">Your guesses</caption>
+          <thead id="log-head"></thead>
+          <tbody id="log-body"></tbody>
+        </table>
+      </div>
+
+      <div class="card prompt" id="prompt"></div>
+    </section>
   </main>
+  <div class="veil" id="veil" hidden></div>
+
+  <script src="js/exact.js"></script>
+  <script src="js/equations.js"></script>
+  <script src="js/model.js"></script>
+  <script src="js/flow.js"></script>
+  <script src="js/equation-view.js"></script>
+  <script src="js/balance.js"></script>
+  <script src="js/activity.js"></script>
 </body>
 </html>

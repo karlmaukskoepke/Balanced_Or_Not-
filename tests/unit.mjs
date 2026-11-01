@@ -6,11 +6,13 @@ import assert from "node:assert/strict";
 const ctx = { console };
 ctx.globalThis = ctx;
 vm.createContext(ctx);
-for (const f of ["exact", "equations", "model", "balance"]) {
+for (const f of ["exact", "equations", "model", "flow", "balance"]) {
   vm.runInContext(readFileSync(new URL(`../js/${f}.js`, import.meta.url), "utf8"), ctx, { filename: f });
 }
 const { BON } = ctx;
-const E = BON.exact, M = BON.model, G = BON.balanceGeometry;
+const E = BON.exact, M = BON.model, G = BON.balanceGeometry, F = BON.flow;
+const X = (h) => E.frac(h, 100);                 // slider position in hundredths -> exact x
+const cmpH = (q, h) => M.compare(q, X(h));
 const EQ = (id) => BON.EQUATIONS.find((q) => q.id === id);
 const plain = (v) => JSON.parse(JSON.stringify(v)); // values from the script realm
 const MINUS = "−";
@@ -68,7 +70,7 @@ test("0.1 + 0.2 shows 0.3 (no float artifacts)", () => {
   assert.equal(E.fmtH(E.parseDecimalToHundredths("0.1") + E.parseDecimalToHundredths("0.2")), "0.3");
   // every slider position on every equation: readouts are short exact decimals
   for (const q of BON.EQUATIONS) for (const h of allSliderH(q)) {
-    const t = M.substitutionText(q.left, h) + " | " + M.substitutionText(q.right, h);
+    const t = M.substitutionLine(q.left, X(h), "decimal") + " | " + M.substitutionLine(q.right, X(h), "decimal");
     assert.ok(!/\d\.\d{3,}|e[+-]?\d|NaN|Infinity/.test(t), t);
   }
 });
@@ -85,70 +87,144 @@ test("fractions stay exact", () => {
 console.log("Spec section 13 (numbers)");
 test("#3 near 1.33/1.34: never balanced, difference 0.01 at 1.33 (0.02 at 1.34), tilt at least the floor", () => {
   const q = EQ(3);
-  const a = M.compare(q, 133), b = M.compare(q, 134);
+  const a = cmpH(q, 133), b = cmpH(q, 134);
   assert.equal(a.heavier, "right"); assert.equal(b.heavier, "left");
-  assert.equal(E.fmtH(a.diffH), "0.01"); assert.equal(E.fmtH(b.diffH), "0.02");
-  assert.ok(Math.abs(G.tiltFor(a.leftH - a.rightH)) >= G.MIN_TILT);
-  assert.ok(G.tiltFor(a.leftH - a.rightH) > 0, "right side down at 1.33");
-  assert.ok(G.tiltFor(b.leftH - b.rightH) < 0, "left side down at 1.34");
-  for (const h of allSliderH(q)) assert.notEqual(M.compare(q, h).heavier, "balanced");
+  assert.equal(E.fmtValue(a.diff), "0.01"); assert.equal(E.fmtValue(b.diff), "0.02");
+  assert.ok(Math.abs(G.tiltFor(a.signedDiff)) >= G.MIN_TILT);
+  assert.ok(G.tiltFor(a.signedDiff) > 0, "right side down at 1.33");
+  assert.ok(G.tiltFor(b.signedDiff) < 0, "left side down at 1.34");
+  for (const h of allSliderH(q)) assert.notEqual(cmpH(q, h).heavier, "balanced");
 });
 test("#9 at x = 0: balanced at 4 and 4; boxes are zero-boxes", () => {
-  const c = M.compare(EQ(9), 0);
-  assert.equal(c.heavier, "balanced"); assert.equal(c.leftH, 400); assert.equal(c.rightH, 400);
-  const lay = G.layout(EQ(9), 0);
+  const c = cmpH(EQ(9), 0);
+  assert.equal(c.heavier, "balanced"); assert.equal(E.fmtValue(c.left), "4"); assert.equal(E.fmtValue(c.right), "4");
+  const lay = G.layout(EQ(9), X(0));
   const shapes = plain(lay.left.items).map((i) => i.shape + ":" + i.label);
   assert.deepEqual(shapes, ["zero-box:0", "zero-box:0", "zero-box:0", "weight:+4"]);
   assert.deepEqual(plain(lay.right.items).map((i) => i.shape + ":" + i.label), ["weight:+4"]);
   lay.left.items.filter((i) => i.shape === "zero-box").forEach((i) => assert.equal(i.w, G.FLOOR_SIDE));
 });
 test("#2 at x = −3: both sides −7; left 3 floating boxes −3 + a +2 weight; right a floating box and a −4 balloon", () => {
-  const c = M.compare(EQ(2), -300);
-  assert.equal(c.leftH, -700); assert.equal(c.rightH, -700); assert.equal(c.heavier, "balanced");
-  const lay = G.layout(EQ(2), -300);
+  const c = cmpH(EQ(2), -300);
+  assert.equal(E.fmtValue(c.left), MINUS + "7"); assert.equal(E.fmtValue(c.right), MINUS + "7"); assert.equal(c.heavier, "balanced");
+  const lay = G.layout(EQ(2), X(-300));
   assert.deepEqual(plain(lay.left.items).map((i) => i.shape + ":" + i.label),
     ["float-box:" + MINUS + "3", "float-box:" + MINUS + "3", "float-box:" + MINUS + "3", "weight:+2"]);
   assert.deepEqual(plain(lay.right.items).map((i) => i.shape + ":" + i.label),
     ["float-box:" + MINUS + "3", "balloon:" + MINUS + "4"]);
-  assert.equal(G.tiltFor(c.leftH - c.rightH), 0);
+  assert.equal(G.tiltFor(c.signedDiff), 0);
 });
 test("#2 left side at any negative x: three floating boxes with the same label", () => {
   for (const h of [-1, -50, -300, -1000]) {
-    const boxes = G.layout(EQ(2), h).left.items.filter((i) => i.shape === "float-box");
+    const boxes = G.layout(EQ(2), X(h)).left.items.filter((i) => i.shape === "float-box");
     assert.equal(boxes.length, 3);
-    assert.ok(boxes.every((b) => b.label === E.fmtH(h)));
+    assert.ok(boxes.every((b) => b.label === E.fmtValue(X(h))));
   }
 });
 test("#5 and #8 never level at any slider position", () => {
   for (const id of [5, 8]) for (const h of allSliderH(EQ(id))) {
-    const c = M.compare(EQ(id), h);
+    const c = cmpH(EQ(id), h);
     assert.notEqual(c.heavier, "balanced");
-    assert.ok(Math.abs(G.tiltFor(c.leftH - c.rightH)) >= G.MIN_TILT);
+    assert.ok(Math.abs(G.tiltFor(c.signedDiff)) >= G.MIN_TILT);
   }
 });
 test("#6, #7, #10 level at every slider position", () => {
-  for (const id of [6, 7, 10]) for (const h of allSliderH(EQ(id))) assert.equal(M.compare(EQ(id), h).heavier, "balanced");
+  for (const id of [6, 7, 10]) for (const h of allSliderH(EQ(id))) assert.equal(cmpH(EQ(id), h).heavier, "balanced");
 });
 test("tilt is capped and grows with the difference", () => {
-  assert.equal(G.tiltFor(0), 0);
-  assert.ok(Math.abs(G.tiltFor(100000)) <= G.MAX_TILT);
-  assert.ok(Math.abs(G.tiltFor(100)) < Math.abs(G.tiltFor(800)));
+  assert.equal(G.tiltFor(E.frac(0)), 0);
+  assert.ok(Math.abs(G.tiltFor(E.frac(1000))) <= G.MAX_TILT);
+  assert.ok(Math.abs(G.tiltFor(E.frac(1))) < Math.abs(G.tiltFor(E.frac(8))));
 });
 
 console.log("Readout");
-test("substitution steps", () => {
-  assert.equal(M.substitutionText(EQ(2).left, -200), `3(${MINUS}2) + 2 = ${MINUS}6 + 2 = ${MINUS}4`);
-  assert.equal(M.substitutionText(EQ(7).left, -200), `5 + (${MINUS}2) + (${MINUS}2) = 1`);
-  assert.equal(M.substitutionText(EQ(9).right, 0), "4");
-  assert.equal(M.substitutionText(EQ(11).left, 200), `3(2) ${MINUS} 6 + 2 = 6 ${MINUS} 6 + 2 = 2`);
-  assert.equal(M.substitutionText(EQ(10).left, -200), `2(${MINUS}2) + 3 + (${MINUS}2) = ${MINUS}4 + 3 + (${MINUS}2) = ${MINUS}3`);
-  assert.equal(M.substitutionText(EQ(1).right, 133), "1.33 + 7 = 8.33");
+test("one-line substitution per side, negatives in parentheses", () => {
+  const L = (id, side, x, st) => M.substitutionLine(EQ(id)[side], x, st);
+  assert.equal(L(2, "left", E.frac(5)), "3(5) + 2 = 17");
+  assert.equal(L(2, "left", E.frac(-2)), `3(${MINUS}2) + 2 = ${MINUS}4`);
+  assert.equal(L(7, "left", E.frac(-2)), `5 + (${MINUS}2) + (${MINUS}2) = 1`);
+  assert.equal(L(9, "right", E.frac(0)), "4");
+  assert.equal(L(11, "left", E.frac(2)), `3(2) ${MINUS} 6 + 2 = 2`);
+  assert.equal(L(1, "right", X(133), "decimal"), "1.33 + 7 = 8.33");
+  assert.equal(L(1, "left", E.frac(-1, 2), "fraction"), `2(${MINUS}1/2) + 3 = 2`);
+  assert.equal(L(1, "right", E.frac(-1, 2), "fraction"), `(${MINUS}1/2) + 7 = 13/2`);
+});
+
+console.log("Typed numbers");
+test("integers, decimals and fractions; '-' alone is 'not yet'", () => {
+  const v = (s) => { const p = E.parseNumber(s); return p.ok ? E.fmtFrac(p.value) : p.partial ? "partial" : "bad"; };
+  assert.equal(v("4"), "4"); assert.equal(v("-3"), MINUS + "3"); assert.equal(v("\u22123"), MINUS + "3");
+  assert.equal(v("-1/2"), MINUS + "1/2"); assert.equal(v("8/6"), "4/3"); assert.equal(v("1.25"), "5/4"); assert.equal(v(".5"), "1/2");
+  for (const s of ["", "-", "1/", "2.", "."]) assert.equal(v(s), "partial", s);
+  for (const s of ["abc", "1.2.3", "x", "--1", "1/2/3"]) assert.equal(v(s), "bad", s);
+  assert.ok(E.parseNumber("3/0").zeroDen);
+});
+test("values are shown the way they were typed", () => {
+  assert.equal(E.fmtValue(E.frac(13, 2), "fraction"), "13/2");
+  assert.equal(E.fmtValue(E.frac(13, 2), "decimal"), "6.5");
+  assert.equal(E.fmtValue(E.frac(4, 3), "decimal"), "4/3");
+  assert.equal(E.fmtValue(E.frac(-1, 100)), MINUS + "0.01");
+});
+
+console.log("Guesses");
+test("seeds: #1 1 and 7, #2 −5 and 1, #3 0 and 3; none from #4 on; each pair brackets the solution", () => {
+  const want = { 1: "1,7", 2: `${MINUS}5,1`, 3: "0,3" };
+  for (const q of BON.EQUATIONS) {
+    const seeds = F.seedsFor(q).map((f) => E.fmtFrac(f)).join(",");
+    assert.equal(seeds, want[q.id] || "", "equation " + q.id);
+    if (want[q.id]) {
+      const [a, b] = F.seedsFor(q).map((x) => M.compare(q, x).heavier);
+      assert.ok(a !== b && a !== "balanced" && b !== "balanced", "seeds land on opposite sides, equation " + q.id);
+    }
+  }
+});
+test("heavier side and difference checking, with the hint wording", () => {
+  const q = EQ(2); // 3x + 2 = x − 4
+  let r = F.checkGuess(q, E.frac(-5), "int", { heavier: "left", diff: "4" }, true); // −13 vs −9
+  assert.equal(r.ok, false); assert.equal(r.field, "heavier"); assert.equal(r.highlight, "right");
+  assert.equal(r.message, `${MINUS}9 is greater than ${MINUS}13.`);
+  r = F.checkGuess(q, E.frac(-5), "int", { heavier: "right", diff: "22" }, true);
+  assert.equal(r.field, "diff"); assert.equal(r.message, `Larger minus smaller: ${MINUS}9 ${MINUS} (${MINUS}13).`);
+  assert.ok(F.checkGuess(q, E.frac(-5), "int", { heavier: "right", diff: "4" }, true).ok);
+  assert.ok(F.checkGuess(q, E.frac(-5), "int", { heavier: "right" }, false).ok, "Part 2 asks the side only");
+  assert.ok(F.checkGuess(q, E.frac(-3), "int", { heavier: "balanced", diff: "" }, true).ok, "balanced with a blank difference");
+  r = F.checkGuess(q, E.frac(-3), "int", { heavier: "left", diff: "0" }, true);
+  assert.equal(r.highlight, "both"); assert.ok(r.message.includes("Neither side is greater"));
+  assert.ok(F.checkGuess(EQ(1), E.frac(-1, 2), "fraction", { heavier: "right", diff: "4.5" }, true).ok, "4.5 = 9/2");
+});
+test("duplicate guesses are caught exactly (2 = 2.0 = 4/2)", () => {
+  const g = [{ x: E.frac(2) }];
+  assert.ok(F.isDuplicate(g, E.parseNumber("2.0").value));
+  assert.ok(F.isDuplicate(g, E.parseNumber("4/2").value));
+  assert.ok(!F.isDuplicate(g, E.parseNumber("2.01").value));
+});
+
+console.log("Sorting and the solve entry");
+test("sorting accepts only the right column", () => {
+  for (const q of BON.EQUATIONS) for (const c of ["one", "always", "never"]) assert.equal(F.checkSort(q, c), q.category === c);
+});
+test("solve entry: x = 4, 4 = x, 5 = 5, 10 = 10, 3 = 8, 4/3, 8/6, 1.33, wrong values", () => {
+  const S = (id, a, b) => F.checkSolve(EQ(id), a, b).status;
+  assert.equal(S(1, "x", "4"), "agree"); assert.equal(S(1, "4", "x"), "agree"); assert.equal(S(12, "x", "4.0"), "agree");
+  assert.equal(S(1, "x", "5"), "disagree");
+  assert.equal(S(6, "5", "5"), "agree"); assert.equal(S(7, "10", "10"), "agree"); assert.equal(S(1, "5", "5"), "disagree");
+  assert.equal(S(4, "3", "8"), "agree"); assert.equal(S(5, "0", "8"), "agree"); assert.equal(S(6, "3", "8"), "disagree");
+  assert.equal(S(3, "x", "4/3"), "agree"); assert.equal(S(3, "8/6", "x"), "agree");
+  assert.equal(S(3, "x", "1.33"), "rounded"); assert.equal(S(3, "x", "1.3"), "rounded"); assert.equal(S(3, "x", "1.333"), "rounded");
+  assert.equal(S(3, "x", "1"), "disagree"); assert.equal(S(9, "x", "0"), "agree"); assert.equal(S(2, "-3", "x"), "agree");
+  assert.equal(S(1, "x", ""), "incomplete"); assert.equal(S(1, "x", "x"), "invalid"); assert.equal(S(1, "y", "4"), "invalid");
+  const msg = F.checkSolve(EQ(3), "x", "1.33").message;
+  assert.ok(msg.includes("5/4") && !msg.includes("4/3"), "rounded hint uses an example that is not the answer");
+});
+test("no feedback text states the rule or names A or C", () => {
+  const all = JSON.stringify(F.TEXT) + F.checkSolve(EQ(4), "x", "1").message;
+  assert.ok(!/\bA\b|\bC\b/.test(all) && !/coefficient|same number of x|plain numbers/i.test(all));
 });
 
 console.log("Layout");
 test("pieces never pass the top of their band (so never reach the beam) for every equation and x", () => {
   for (const q of BON.EQUATIONS) for (const h of [-1000, -999, -300, -1, 0, 1, 133, 400, 800, 1000, 9999, -9999]) {
-    const lay = G.layout(q, h);
+    const lay = G.layout(q, X(h));
     for (const s of ["left", "right"]) for (const it of lay[s].items) {
       const top = it.y - it.h / 2;
       if (it.band === "weight") assert.ok(top >= -G.WEIGHT_BAND.h - 0.01, `eq ${q.id} x ${h}: weight too tall`);
@@ -159,7 +235,7 @@ test("pieces never pass the top of their band (so never reach the beam) for ever
   }
 });
 test("5 boxes at x = 8 fit without overlapping each other", () => {
-  const items = G.layout(EQ(8), 800).left.items;
+  const items = G.layout(EQ(8), X(800)).left.items;
   for (let i = 0; i < items.length; i++) for (let j = i + 1; j < items.length; j++) {
     const a = items[i], b = items[j];
     const overlap = Math.abs(a.x - b.x) < (a.w + b.w) / 2 - 0.01 && Math.abs(a.y - b.y) < (a.h + b.h) / 2 - 0.01;

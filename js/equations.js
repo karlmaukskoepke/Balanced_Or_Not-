@@ -8,6 +8,7 @@
  * category: "one" | "never" | "always"   (taken from the teacher's table; never recomputed)
  * solution: for "one", an exact fraction { n, d }  (4/3 is { n: 4, d: 3 }); otherwise null
  * sliderRange: whole-number endpoints; a "one" solution must sit strictly inside
+ * seeds: optional; the first guesses the page supplies (they bracket the solution). Equations 1-3 only.
  * note: for the teacher reading this file; not shown to students
  */
 (function (root) {
@@ -19,12 +20,12 @@
 
   BON.EQUATIONS = [
     { id: 1, part: 1, left: [x(2), c(3)], right: [x(1), c(7)],
-      category: "one", solution: { n: 4, d: 1 }, sliderRange: [-10, 10], note: "x = 4" },
+      category: "one", solution: { n: 4, d: 1 }, sliderRange: [-10, 10], seeds: [1, 7], note: "x = 4" },
     { id: 2, part: 1, left: [x(3), c(2)], right: [x(1), c(-4)],
-      category: "one", solution: { n: -3, d: 1 }, sliderRange: [-10, 10],
+      category: "one", solution: { n: -3, d: 1 }, sliderRange: [-10, 10], seeds: [-5, 1],
       note: "x = −3; the right side holds a balloon at the solution" },
     { id: 3, part: 1, left: [x(4), c(1)], right: [x(1), c(5)],
-      category: "one", solution: { n: 4, d: 3 }, sliderRange: [-10, 10],
+      category: "one", solution: { n: 4, d: 3 }, sliderRange: [-10, 10], seeds: [0, 3],
       note: "x = 4/3; the slider never lands exactly" },
     { id: 4, part: 1, left: [x(2), c(3)], right: [x(2), c(8)],
       category: "never", solution: null, sliderRange: [-10, 10], note: "right always heavier by 5" },
