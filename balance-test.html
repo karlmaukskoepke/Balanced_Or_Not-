@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Balance Test Page</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <header class="topbar">
+    <h1>Balanced or Not? <span class="topbar-sub">Balance test page</span></h1>
+    <a class="topbar-link" href="teachers.html">Printable sheets</a>
+  </header>
+
+  <main class="test-page">
+    <nav class="eq-picker" aria-label="Choose an equation">
+      <span class="eq-picker-label" id="picker-label">Equation</span>
+      <div class="eq-picker-buttons" id="picker" role="group" aria-labelledby="picker-label"></div>
+    </nav>
+
+    <div class="eq-header">
+      <span class="eq-number" id="eq-number" aria-hidden="true">1</span>
+      <h2 class="eq-display" id="eq-display"></h2>
+    </div>
+
+    <div class="balance-wrap">
+      <svg id="balance" class="balance" aria-describedby="readout-result"></svg>
+    </div>
+
+    <section class="controls" aria-label="Choose a value for x">
+      <div class="x-entry">
+        <label for="x-input" class="x-label"><span class="eqn-x">x</span> =</label>
+        <button type="button" class="btn btn-small" id="x-sign" aria-label="Change the sign of x">&plusmn;</button>
+        <input id="x-input" class="x-input" type="text" inputmode="decimal" autocomplete="off"
+               spellcheck="false" aria-describedby="x-help" value="0">
+        <span class="x-help" id="x-help">Arrow keys: up/down by 1, with Shift by 0.01</span>
+      </div>
+      <p class="x-error" id="x-error" role="alert"></p>
+      <div class="slider-row">
+        <span class="slider-end" id="slider-min">−10</span>
+        <input id="x-slider" class="x-slider" type="range" min="-10" max="10" step="0.01" value="0"
+               aria-label="Slide to choose x">
+        <span class="slider-end" id="slider-max">10</span>
+      </div>
+    </section>
+
+    <section class="readout" aria-label="Substitution">
+      <p class="readout-line"><span class="readout-side">Left side:</span> <span id="readout-left"></span></p>
+      <p class="readout-line"><span class="readout-side">Right side:</span> <span id="readout-right"></span></p>
+      <p class="readout-result" id="readout-result" aria-live="polite"></p>
+    </section>
+
+    <details class="test-options">
+      <summary>Test options</summary>
+      <label><input type="checkbox" id="opt-reduced"> Pretend "reduce motion" is on (the beam snaps instead of easing)</label>
+    </details>
+  </main>
+
+  <script src="js/exact.js"></script>
+  <script src="js/equations.js"></script>
+  <script src="js/model.js"></script>
+  <script src="js/equation-view.js"></script>
+  <script src="js/balance.js"></script>
+  <script src="js/balance-test.js"></script>
+</body>
+</html>
