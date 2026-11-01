@@ -1,0 +1,118 @@
+/* Balanced or Not? — shared styles. Blue matches the paper sheets (#1F5FBF). */
+:root {
+  --blue: #1F5FBF;
+  --blue-tint: #E4ECFA;
+  --ink: #111111;
+  --muted: #555555;
+  --line: #C9D3E3;
+  --bg: #FFFFFF;
+  --panel: #F6F8FC;
+  --green: #1E7A36;
+  --red: #C0262D;
+  --focus: #F2A900;
+}
+
+* { box-sizing: border-box; }
+html { font-size: 20px; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: Helvetica, Arial, "Liberation Sans", sans-serif;
+  line-height: 1.35;
+}
+a { color: var(--blue); }
+
+:focus-visible { outline: 4px solid var(--focus); outline-offset: 3px; }
+
+/* ---------- top bar ---------- */
+.topbar {
+  display: flex; align-items: baseline; justify-content: space-between; gap: 1rem; flex-wrap: wrap;
+  padding: 0.6rem 1rem; border-bottom: 2px solid var(--ink);
+}
+.topbar h1 { margin: 0; font-size: 1.5rem; }
+.topbar-sub { font-weight: 400; font-size: 1rem; color: var(--muted); margin-left: 0.5rem; }
+.topbar-link { font-weight: 700; font-size: 0.9rem; }
+
+/* ---------- buttons ---------- */
+.btn {
+  font: inherit; font-weight: 700; font-size: 1.1rem;
+  min-height: 48px; min-width: 48px; padding: 0.3rem 0.9rem;
+  border: 2px solid var(--blue); border-radius: 10px; background: #FFFFFF; color: var(--blue);
+  cursor: pointer;
+}
+.btn:hover { background: var(--blue-tint); }
+.btn-small { font-size: 1.3rem; padding: 0.1rem 0.6rem; }
+
+/* ---------- equations (blue x-terms, black numbers, like the sheet) ---------- */
+.eqn { font-weight: 700; white-space: nowrap; }
+.eqn-x { color: var(--blue); }
+.eqn--emphasis .eqn-x { background: var(--blue-tint); border-radius: 6px; padding: 0 0.12em; }
+
+/* ---------- test page ---------- */
+.test-page { max-width: 1180px; margin: 0 auto; padding: 0.6rem 1rem 2rem; }
+.eq-picker { display: flex; align-items: center; gap: 0.6rem; flex-wrap: wrap; }
+.eq-picker-label { font-weight: 700; color: var(--muted); }
+.eq-picker-buttons { display: flex; flex-wrap: wrap; gap: 0.35rem; }
+.eq-pick {
+  font: inherit; font-weight: 700; min-width: 48px; min-height: 48px;
+  border: 2px solid var(--blue); border-radius: 50%; background: #FFFFFF; color: var(--blue); cursor: pointer;
+}
+.eq-pick[aria-pressed="true"] { background: var(--blue); color: #FFFFFF; }
+
+.eq-header { display: flex; align-items: center; justify-content: center; gap: 1rem; margin: 0.7rem 0 0; }
+.eq-number {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 2.2rem; height: 2.2rem; border: 3px solid var(--blue); border-radius: 50%;
+  color: var(--blue); font-weight: 700; font-size: 1.2rem;
+}
+.eq-display { margin: 0; font-size: clamp(1.8rem, 5vw, 3rem); }
+
+.balance-wrap { display: flex; justify-content: center; }
+.balance { width: 100%; max-height: 66vh; height: auto; display: block; }
+.bon-label { text-anchor: middle; dominant-baseline: central; font-weight: 700; font-family: inherit; }
+.bon-total { text-anchor: middle; font-weight: 700; fill: var(--ink); font-family: inherit; }
+
+.controls {
+  background: var(--panel); border: 2px solid var(--line); border-radius: 14px;
+  padding: 0.7rem 1rem; margin-top: 0.4rem;
+}
+.x-entry { display: flex; align-items: center; gap: 0.6rem; flex-wrap: wrap; }
+.x-label { font-weight: 700; font-size: 1.6rem; }
+.x-input {
+  font: inherit; font-weight: 700; font-size: 1.6rem; width: 6.5em; min-height: 48px;
+  padding: 0.15rem 0.5rem; border: 2px solid var(--ink); border-radius: 10px; text-align: center;
+}
+.x-help { color: var(--muted); font-size: 0.85rem; }
+.x-error { min-height: 1.2em; margin: 0.2rem 0; color: var(--red); font-weight: 700; }
+.slider-row { display: flex; align-items: center; gap: 0.8rem; }
+.slider-end { font-weight: 700; min-width: 2.5em; text-align: center; }
+.x-slider { flex: 1; height: 48px; accent-color: var(--blue); cursor: pointer; }
+
+.readout { margin-top: 0.6rem; font-size: 1.25rem; }
+.readout-line { margin: 0.2rem 0; font-weight: 700; }
+.readout-side { color: var(--muted); font-weight: 400; display: inline-block; min-width: 6.5em; }
+.readout-result { margin: 0.5rem 0 0; font-size: 1.4rem; font-weight: 700; }
+
+.test-options { margin-top: 1.2rem; color: var(--muted); font-size: 0.9rem; }
+.test-options summary { cursor: pointer; font-weight: 700; }
+
+/* ---------- teacher / landing pages ---------- */
+.page { max-width: 900px; margin: 0 auto; padding: 1rem; }
+.page h2 { font-size: 1.3rem; margin-top: 1.6rem; }
+.download-list { list-style: none; padding: 0; display: grid; gap: 0.8rem; }
+.download-list a {
+  display: block; padding: 0.8rem 1rem; border: 2px solid var(--line); border-radius: 12px;
+  text-decoration: none; font-weight: 700;
+}
+.download-list a:hover { border-color: var(--blue); background: var(--panel); }
+.download-list small { display: block; font-weight: 400; color: var(--muted); margin-top: 0.2rem; }
+
+@media (max-width: 640px) {
+  html { font-size: 17px; }
+  .readout-side { min-width: 0; display: block; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * { animation: none !important; transition: none !important; }
+}
