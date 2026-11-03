@@ -138,6 +138,32 @@ const check = (ok, msg) => { console.log((ok ? "  ok  " : "  FAIL ") + msg); if 
     await type("-1/2");
     check((await page.textContent("#xbox")) === `${M}1/2` && (await tots()).join("|") === "2|13/2", `${tag}: typed −1/2: x-box shows −1/2, totals 2 and 13/2`);
 
+    // ---- the slider column stands apart from the balance; a negative x floats just beside its slot ----
+    for (const pageName of ["balance-test.html?eq=12&x=", "index.html?all=1&eq=12&x="]) {
+      for (const v of ["-6", "-1", "0", "6"]) {
+        if (pageName.startsWith("index")) { await page.goto(base + "balance-test.html?eq=12&x=" + v); }
+        else await testEq(12, v);
+        const r = await page.evaluate(() => {
+          const R = (e) => e.getBoundingClientRect();
+          const col = R(document.querySelector(".col-slide")), xb = R(document.getElementById("xbox"));
+          const slot = R(document.querySelector(".vs-slot")), bal = R(document.getElementById("balance"));
+          const vb = document.getElementById("balance").viewBox.baseVal, k = Math.min(bal.width / vb.width, bal.height / vb.height);
+          const drawLeft = bal.left + (bal.width - vb.width * k) / 2;
+          const hit = (a, b) => !(a.right <= b.left || b.right <= a.left || a.bottom <= b.top || b.bottom <= a.top);
+          const nums = [...document.querySelectorAll(".vs-num")].map(R);
+          const form = [...document.querySelectorAll(".x-form > *")].map(R);
+          return { inside: xb.left >= col.left && xb.right <= col.right && xb.top >= col.top,
+            gap: drawLeft - col.right, beside: xb.left - slot.left, onLabels: nums.some((n) => hit(n, xb)),
+            formInside: form.every((f) => f.right <= col.right - 2), balloon: document.getElementById("xbox").classList.contains("is-balloon") };
+        });
+        check(r.inside && !r.onLabels && r.formInside && r.gap >= 40,
+          `${tag} x = ${v}: the x-box stays in the slider column, off the labels; the balance starts ${Math.round(r.gap)} px to the right`);
+        if (v.startsWith("-")) check(r.balloon && r.beside >= 8 && r.beside <= 20, `${tag} x = ${v}: the balloon sits just beside the slot (${Math.round(r.beside)} px), not far right`);
+        await fits(`x = ${v}`);
+      }
+      break; // both pages share the same screen; the test page covers it
+    }
+
     // ---- busiest balance: five boxes and a ball on one pan, a balloon on the other ----
     for (const [id, v] of [[8, "6"], [12, "6"], [12, "-6"], [5, "-6"]]) {
       await testEq(id, v);

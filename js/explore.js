@@ -24,13 +24,25 @@
       min: -6, max: 6,
       onInput: function (x, style, how) { if (!cur.locked) { stopTravel(); setX(x, style); if (o.onMove) o.onMove(x, style, how); } }
     });
-    o.sliderHost.querySelector(".vs-slot").appendChild(o.xbox);
+    var slot = o.sliderHost.querySelector(".vs-slot");
+    slot.appendChild(o.xbox);
+    // the string for a negative x: from the zero mark to the balloon beside the slot
+    var xstring = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+    xstring.setAttribute("class", "xstring"); xstring.setAttribute("width", "1"); xstring.setAttribute("height", "1");
+    xstring.setAttribute("aria-hidden", "true");
+    var xline = document.createElementNS("http://www.w3.org/2000/svg", "line");
+    xline.setAttribute("stroke", "#4A4A4A"); xline.setAttribute("stroke-width", "2");
+    xstring.appendChild(xline);
+    slot.insertBefore(xstring, o.xbox);
+    var BESIDE = 14, LIFT = 10, ANCHOR_X = -26; // px: gap beside the slot, float above zero, the zero mark's end
 
     /* ---------- drawing ---------- */
 
     function drawXBox() {
       var box = o.xbox, px = view.unitPx() || 0.85;
       box.className = "xbox";
+      box.style.transform = "";
+      xstring.setAttribute("hidden", "");
       if (cur.build || !cur.x) {
         box.classList.add("is-unknown");
         setSize(box, G.UNKNOWN_SIDE * px);
@@ -40,8 +52,19 @@
       }
       var s = E.fSign(cur.x), side = G.sizeOf(cur.x.n / cur.x.d) * px;
       if (s === 0) box.classList.add("is-zero");
-      if (s < 0) box.classList.add("is-balloon");
       setSize(box, side);
+      if (s < 0) {
+        // a balloon just beside the slot, tethered at the zero mark; farther right only if the column needs it
+        box.classList.add("is-balloon");
+        var colRight = o.sliderHost.getBoundingClientRect().right - slot.getBoundingClientRect().left - 4;
+        var dx = BESIDE;
+        if (dx + side > colRight) dx = Math.max(0, colRight - side);
+        box.style.transform = "translate(" + dx.toFixed(1) + "px, calc(-100% - " + LIFT + "px))";
+        box.style.top = "50%";
+        xline.setAttribute("x1", ANCHOR_X); xline.setAttribute("y1", 0);
+        xline.setAttribute("x2", (dx + side / 2).toFixed(1)); xline.setAttribute("y2", (-LIFT + 2).toFixed(1));
+        xstring.removeAttribute("hidden");
+      } else box.style.top = "";
       var t = E.fmtValue(cur.x, cur.style);
       box.firstChild.textContent = t;
       box.firstChild.style.fontSize = Math.max(10, Math.min(side * 0.5, (side - 6) / (t.length * 0.58))).toFixed(1) + "px";
