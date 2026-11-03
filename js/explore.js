@@ -155,6 +155,7 @@
     function show(eq, model, opts) {
       opts = opts || {};
       stopTravel();
+      if (cur.eq !== eq) { o.input.value = ""; o.msg.textContent = ""; } // a new equation starts with an empty typed box
       cur.eq = eq; cur.model = model; cur.build = !!opts.build;
       if (opts.x) { cur.x = opts.x; cur.style = opts.style || "decimal"; }
       vs.setValue(cur.x, cur.style);

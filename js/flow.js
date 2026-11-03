@@ -17,8 +17,33 @@
     buildLeft: "Look at the left side again.",
     buildRight: "Look at the right side again.",
     buildBoth: "Look at both sides again.",
-    lookModel: "Look at the model. Does it match the equation?"
+    lookModel: "Look at the model. Does it match the equation?",
+    checkQ: "What did the slider show?",
+    checkSlider: "Check the slider again."
   };
+
+  /* The one-tap check: the slider words for each category (the same words as the paper sheet). */
+  var SLIDER_WORDS = [["one", "Sometimes balanced"], ["always", "Always balanced"], ["never", "Never balanced"]];
+  function checkSlider(eq, cat) { return eq.category === cat; }
+
+  /*
+   * Part 3: a predicted category and a reason. Wrong reasoning gets a counterexample from an earlier
+   * equation (one that fits the chosen reason), never the rule itself.
+   *   earlier: equations the student has already done (in order), most recent last
+   * Returns { ok: true } or { ok: false, reasonFits, example, exampleCat }.
+   */
+  function checkPart3(eq, cat, reasonId, earlier) {
+    var R = BON.REASONS, k = M.abcd(eq);
+    var chosen = R.filter(function (r) { return r.id === reasonId; })[0];
+    var right = R.filter(function (r) { return r.fits(k); })[0];
+    if (chosen && chosen === right && cat === eq.category) return { ok: true };
+    var reasonFits = !!chosen && chosen.fits(k);
+    var pool = (earlier && earlier.length ? earlier : BON.EQUATIONS.filter(function (q) { return q.id < eq.id; }));
+    var fitting = pool.filter(function (q) { return chosen && chosen.fits(M.abcd(q)); });
+    // prefer an example whose result differs from the student's predicted category (a true counterexample)
+    var example = fitting.filter(function (q) { return q.category !== cat; }).pop() || fitting.pop() || null;
+    return { ok: false, reasonFits: reasonFits, example: example, exampleCat: example ? example.category : null };
+  }
 
   function inRange(eq, x) {
     return E.fCmp(x, E.frac(eq.sliderRange[0])) >= 0 && E.fCmp(x, E.frac(eq.sliderRange[1])) <= 0;
@@ -45,5 +70,6 @@
     return { ok: false, wrong: wrong, message: wrong === "both" ? TEXT.buildBoth : wrong === "left" ? TEXT.buildLeft : TEXT.buildRight };
   }
 
-  BON.flow = { MIN_POSITIONS: MIN_POSITIONS, TEXT: TEXT, inRange: inRange, readX: readX, checkBuild: checkBuild };
+  BON.flow = { MIN_POSITIONS: MIN_POSITIONS, TEXT: TEXT, SLIDER_WORDS: SLIDER_WORDS, inRange: inRange, readX: readX,
+    checkBuild: checkBuild, checkSlider: checkSlider, checkPart3: checkPart3 };
 })(typeof window !== "undefined" ? window : globalThis);

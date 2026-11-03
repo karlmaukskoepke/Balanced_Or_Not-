@@ -102,8 +102,14 @@
     return xCount(m) === xCount(side) && m.c === side.c;
   }
 
+  /* A, B, C, D of Ax + B = Cx + D (never shown to students). */
+  function abcd(eq) {
+    var m = modelFromEquation(eq);
+    return { A: xCount(m.left), B: m.left.c, C: xCount(m.right), D: m.right.c };
+  }
+
   BON.model = {
-    sideModel: sideModel, modelFromEquation: modelFromEquation, emptyModel: emptyModel, xCount: xCount,
+    abcd: abcd, sideModel: sideModel, modelFromEquation: modelFromEquation, emptyModel: emptyModel, xCount: xCount,
     modelSideValue: modelSideValue, compareModel: compareModel, sideMatches: sideMatches,
     sideValue: sideValue, compare: compare,
     sidePieces: sidePieces, sideText: sideText, equationText: equationText,

@@ -86,6 +86,7 @@ Use exact rationals (or integers in hundredths). Typed fractions like −1/2 are
 - **Left column:** the vertical number-line slider (section 5) with the x-box beside zero, and the typed "x =" box beneath it.
 - **Center:** the equation (large, centered), then the balance, then the readout row: **left total, relation sign, right total** (section 6).
 - **Right column:** one prompt panel for everything the student reads or presses: step instructions, the one-tap check, the "I solved it" button, the worked steps, and Next. It grows when showing steps.
+- **Separation:** leave clear space between the left slider column and the balance, and scale the balance down slightly (about 10%) so the slider's x-box cannot read as part of the balance. A faint divider or tinted background on the slider column is fine.
 - Step strip across the top. No heavier-side label under the equation.
 - **Build palettes** (Build step only): one small button group above each pan: `x`, `+1`, `−1`. They must not cover the pans or the pieces; if needed, place them below the pans during Build.
 
@@ -109,6 +110,7 @@ Draw the balance as **layered SVG** (not a single image, so parts can move): bas
 
 ### Pieces and sizing
 - **x-box:** weight with a heavy look (shading, bevel, a shadow where it sits on the pan), blue outline, the value written inside. Each x-term of coefficient k renders as k separate boxes. Split terms render separately as written (a pre-built model for x + x shows two boxes).
+- **Pan arrangement:** on each pan, the x-boxes and the net constant form one group, **centered on the pan** (left and right pans alike, never left- or right-aligned). The constant ball/balloon sits right next to the x-boxes. Only if the group is too wide for the pan does the constant move to the far side.
 - **Constants:** each side holds one **net constant**, drawn as a single ball (positive, green) or a single balloon (negative, red) whose size grows with |value|. Label it with a sign ("+5", "−6"). Zero shows nothing.
 - **One size function for everything:** side length of a box (and diameter of a ball or balloon) for value v is `s(v) = s1 · sqrt(|v|)` (area ∝ |value|), with a minimum floor so a piece never vanishes. The **left x-box and every x-box on the pans must be exactly the same size** at any value (add a test that compares their rendered sizes). A ball of value v has the same diameter as a box of side s(v).
 - **Sizing budget:** pans are sized so five boxes at the largest allowed |x| (6) fit at true scale without shrinking. Choose s1 accordingly (for example s(6) ≈ 44 px). In free play, if the range is larger, apply one **uniform scale factor** to every piece, including the left x-box, and show a small "scale" tag, so sizes still match.
@@ -117,9 +119,11 @@ Draw the balance as **layered SVG** (not a single image, so parts can move): bas
 - Never rely on color alone: every piece shows its sign or value as text.
 
 ### Tilt
-- The side with the greater value goes down. Tilt is capped (about 18°) with a floor of 3–4° for any nonzero difference. Exactly 0 is level.
-- Scale per equation so the largest difference across the range reaches the cap; for never-balanced equations hold a constant, clearly visible tilt (about 60% of the cap).
-- During Build the beam stays **level**.
+- The side with the greater value goes down. Exactly 0 difference is level; nothing else is.
+- **Tilt must respond continuously to every change in x, all the way to the solution.** Do NOT use a minimum tilt or any clamp that makes the beam stop moving near balance (a previous version pinned the beam at a minimum tilt within about 2 units of the solution, which was confusing).
+- Mapping: with d = left total − right total and dmax = the largest |d| across the slider range for this equation, `tilt = sign(d) · cap · (|d| / dmax)^0.6`, with cap about 18°. The exponent below 1 keeps the beam visibly moving as d shrinks toward 0. The mapping is strictly increasing in |d|, so any change in x changes the tilt.
+- Never-balanced equations (d is a nonzero constant): hold a constant, clearly visible tilt (about 60% of the cap).
+- During Build the beam stays level.
 
 ### Readout row (below the balance)
 Show **only totals, no substitution lines**: `left total  [sign]  right total`. The relation sign sits **between the totals, not on the beam**.
@@ -148,11 +152,19 @@ Step strip: **Build ▸ Slide ▸ Check ▸ Solve ▸ Compare.** Whatever step t
 - Correct: continue. Wrong: everything dims except the slider, with "**Check the slider again.**" As soon as the student uses the slider, the screen relights and the question reopens. No retry limit, no scolding.
 
 ### Solve
-- Stop screen, prompt panel only: "On your sheet: circle what the slider showed and write where it balances (x = ___, x is any number, or not possible). Then solve it. Press **'I solved it'** when you have an answer."
+- Stop screen. Show the **equation large and centered** with its number, and the message: "**Solve #N on your sheet.** Circle what the slider showed, write where it balances, and solve it. Press 'I solved it' when you have an answer." Duplicating the check on paper is intentional (reinforcement); do not skip or shorten it.
 
 ### Compare
 - After "I solved it," show the **worked solution steps** (section 14) with "Compare with your work. Copy the correct steps onto your sheet." There is no wait timer, because the page no longer knows whether the student got it wrong.
 - Then: "Write this equation under **[One solution / Infinite solutions / No solutions]** on your reflection page." Then **Next equation**.
+
+### Reflection breaks (stop screens)
+After Compare on certain equations, before Next, show a stop screen: "**Turn to your reflection page.** Do prompt N." with the prompt text in large type and a "Done, continue" button. Students do the writing on paper, not on the page.
+- After **#7**: prompt 1 (No-solutions column: what is the same, what is different)
+- After **#9**: prompt 2 (why "the solution is 0" is not "no solution")
+- After **#10**: prompt 3 (the blue terms in each column)
+- After **#12**: prompts 4a, 4b, 4c (how can you tell just by looking?)
+Prompt text must match the paper reflection page exactly.
 
 ### Coach marks (equation 1 only, replayable with a "?")
 Short callouts, one element each: the equation, the palettes ("click to build each side"), the pans, the x-box ("this is x"), the slider ("heavier at the top, lighter at the bottom"), and the readout.
@@ -176,7 +188,7 @@ Equation numbers and display strings must match the paper exactly.
 
 ## 10. Navigation and state
 
-- Self-paced. A Back button revisits earlier equations without losing progress.
+- Self-paced. The page walks students through the equations **in order** and never prompts them to click ahead, but the numbered equations in the step strip are **all clickable** so students can revisit or move between problems. Each equation keeps its own progress. Next and the reflection breaks follow the normal order. The full lesson runs about a day and a half, so progress must resume the next day: on load, show "Welcome back. Continue at #N" (or Start over).
 - Teacher walkthrough: works on a projector. Keyboard shortcuts for next/back; large type.
 - State persists in `localStorage` (progress, check results) with a "Start over" button. Wrap storage in try/catch.
 - **Completion screen (version 1, on the student's own screen only):** for each of the 12 equations, show the category and whether the one-tap check was right on the first try. Nothing is sent anywhere.
@@ -199,6 +211,7 @@ Controls for Ax + B = Cx + D; A, C in 0–5, B, D in −9 to 9. Same balance, sl
 - #9 at x = 0: boxes dashed with "0", both totals 4, gold `=`.
 - #2 at x = −3: both totals −7; x-boxes are balloons on the left pan; the right pan has a balloon (−4) and a floating x-box.
 - #4, #5, #8, #11: the sign is never `=` at any slider position and the tilt is constant. #6, #7, #10: always `=`.
+- Tilt is strictly monotonic: on #1, tilt at x = 3, 3.5, 3.9, 3.99 is strictly decreasing and nonzero until x = 4 exactly, and the beam is visibly different at 3.9 vs 3.99.
 - Balloons rise straight up with a visible string, and none overlaps the equation at the extreme values.
 - Drag snaps to integers and leaves them easily; arrow keys move 0.01; Shift+arrow 0.1.
 - Wrong one-tap answer dims everything except the slider; using the slider relights it.
