@@ -1,18 +1,21 @@
 /*
- * The student activity, Parts 1 and 2 (equations 1-10).
- * Per equation: guesses (seeded on 1-3) -> prediction -> slider -> sort -> solve on paper and enter the result.
+ * What Makes It Balance? — the student page (spec v2).
+ * Stage A: the screen and the Guess step. Predict, Slide, Solve and Answer come in Stage B.
  *
- * Address options (for the teacher):
- *   ?eq=4     open equation 4 (if it is unlocked)
- *   ?all=1    unlock every equation (teacher walkthrough)
- *   ?reset=1  clear this browser's saved progress first
+ * Guess step: the student types x; the slider thumb travels there (balance, boxes, totals update on the way),
+ * turns green on arrival, an arrow at the "=" points to the heavier side, a marker goes on the number line
+ * and a guess card is added. Equations 1-3 start with two given guesses. No questions per guess.
+ *
+ * Address options (for the teacher):  ?eq=4  open equation 4 (if unlocked) · ?all=1 unlock every equation ·
+ * ?reset=1 clear this browser's saved progress first.
  */
 (function () {
   "use strict";
   var BON = window.BON, E = BON.exact, M = BON.model, F = BON.flow, T = F.TEXT;
   var EQS = BON.EQUATIONS, CATS = BON.CATEGORIES;
-  var KEY = "balanced-or-not-v1";
-  var COL_ORDER = ["one", "always", "never"]; // the reflection page's order
+  var KEY = "what-makes-it-balance-v2";
+  var COL_ORDER = ["one", "always", "never"];
+  var TRAVEL_MAX_MS = 1000;
 
   var $ = function (id) { return document.getElementById(id); };
   var params = new URLSearchParams(location.search);
@@ -20,7 +23,7 @@
 
   /* ---------- saved state ---------- */
 
-  function blank() { return { current: 0, eqs: {} }; }
+  function blank() { return { current: 0, coachSeen: false, eqs: {} }; }
   function load() {
     try {
       if (params.get("reset") === "1") localStorage.removeItem(KEY);
@@ -29,128 +32,193 @@
     } catch (e) { /* storage blocked or unreadable: start fresh */ }
     return blank();
   }
-  function save() {
-    try { localStorage.setItem(KEY, JSON.stringify(state)); } catch (e) { /* keep working without saving */ }
-  }
+  function save() { try { localStorage.setItem(KEY, JSON.stringify(state)); } catch (e) { /* keep working */ } }
   var state = load();
-  if (params.get("reset") === "1") { // don't clear again on a refresh
+  if (params.get("reset") === "1") {
     params.delete("reset");
     try { history.replaceState(null, "", location.pathname + (params.toString() ? "?" + params : "")); } catch (e) { /* ignore */ }
   }
 
   function rec(eq) {
-    var r = state.eqs[eq.id];
-    if (!r) {
-      r = state.eqs[eq.id] = { guesses: [], note: false, prediction: null, sliderUsed: false, sliderX: null,
-        sliderStyle: "decimal", sort: null, sortTries: 0, spotlight: false, solve: null, done: false };
-    }
-    return r;
+    return state.eqs[eq.id] || (state.eqs[eq.id] = { guesses: [], note: false, prediction: null, sort: null });
   }
 
   /* ---------- where the student is ---------- */
 
-  function answeredCount(r) { return r.guesses.filter(function (g) { return g.answered; }).length; }
-  function pending(r) { return r.guesses.filter(function (g) { return !g.answered; })[0] || null; }
-  function lastAnswered(r) {
-    var a = r.guesses.filter(function (g) { return g.answered; });
-    return a[a.length - 1] || null;
-  }
-  function phase(eq, r) {
+  function step(eq, r) {
     if (eq.part === 3) return "part3";
-    if (answeredCount(r) < F.GUESSES) return "guess";
-    if (!r.prediction) return "predict";
-    if (!r.sort) return "slider";
-    if (!r.done) return "solve";
-    return "done";
+    if (r.guesses.length < F.GUESSES) return "guess";
+    return "predict"; // Stage B builds Predict, Slide, Solve and Answer
   }
   function isUnlocked(i) {
     if (unlockAll || i === 0) return true;
     var prev = state.eqs[EQS[i - 1].id];
-    return !!(prev && prev.done);
+    return !!(prev && prev.guesses.length >= F.GUESSES); // Stage A: five guesses open the next equation
   }
-  /* Equations 1-3: is a page-supplied guess still to come? (The first one appears on arrival;
-     the next one after the student has seen the beam tip and asks for it.) */
-  function seedDue(eq, r) {
-    return !pending(r) && r.guesses.length < F.seedsFor(eq).length && r.guesses.length < F.GUESSES;
-  }
-  function addSeed(eq, r) {
-    if (seedDue(eq, r)) r.guesses.push({ x: F.seedsFor(eq)[r.guesses.length], style: "int", given: true, answered: false, tries: 0 });
-  }
+  function seedDue(eq, r) { return r.guesses.length < F.seedsFor(eq).length; }
 
   var startEq = parseInt(params.get("eq"), 10);
   if (startEq >= 1 && startEq <= EQS.length && isUnlocked(startEq - 1)) state.current = startEq - 1;
   if (!(state.current >= 0 && state.current < EQS.length) || !isUnlocked(state.current)) state.current = 0;
 
-  /* ---------- the balance ---------- */
+  /* ---------- current x (what the slider and balance show) ---------- */
 
   var view = BON.createBalance($("balance"));
-  var feedbackHighlight = null; // set after a wrong answer, cleared on the next action
+  var slider = $("x-slider"), input = $("x-input");
+  // cur.x: exact value shown; cur.pos: slider position (a number, for drawing only); cur.landed: arrow showing
+  var cur = { x: null, style: "int", pos: 0, landed: false };
+  var travel = null;
 
-  function sliderStart(eq, r) {
-    if (r.sliderX) return;
-    var g = lastAnswered(r), x = E.frac(0), style = "decimal";
-    if (g && E.isHundredths(g.x) && E.fCmp(g.x, E.frac(eq.sliderRange[0])) >= 0 &&
-        E.fCmp(g.x, E.frac(eq.sliderRange[1])) <= 0) { x = g.x; style = g.style === "fraction" ? "decimal" : g.style; }
-    r.sliderX = x; r.sliderStyle = style;
+  function reducedMotion() { return !!(window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches); }
+  function posOf(x) { return x.n / x.d; }
+
+  function showX(eq) {
+    view.update({ eq: eq, x: cur.x, style: cur.style, tilt: "live" });
+    slider.value = String(Math.round(cur.pos * 100) / 100);
+    drawXBox(cur.x, cur.style);
+    drawArrow(eq);
   }
 
-  function balanceView(eq, r) {
-    var ph = phase(eq, r);
-    if (ph === "guess" || ph === "predict") {
-      var p = pending(r);
-      if (p) return { x: p.x, style: p.style, tilt: "level" };
-      var g = lastAnswered(r);
-      return g ? { x: g.x, style: g.style, tilt: "live" } : { x: null, tilt: "level" };
-    }
-    if (ph === "part3") return { x: null, tilt: "level" };
-    sliderStart(eq, r);
-    return { x: r.sliderX, style: r.sliderStyle, tilt: "live" };
+  /* Move the thumb to x (animated, at most about 1 s), updating the balance on the way; then land. */
+  function travelTo(eq, x, style, onLand) {
+    if (travel) { cancelAnimationFrame(travel.id); travel = null; }
+    var from = cur.pos, to = posOf(x);
+    cur.landed = false;
+    slider.classList.remove("is-arrived");
+    var finish = function () {
+      travel = null;
+      cur.x = x; cur.style = style; cur.pos = to; cur.landed = true;
+      showX(eq);
+      slider.classList.add("is-arrived");
+      if (onLand) onLand();
+    };
+    if (reducedMotion() || Math.abs(to - from) < 0.005) { finish(); return; }
+    var ms = Math.min(TRAVEL_MAX_MS, 300 + 60 * Math.abs(to - from)), start = null;
+    travel = { id: 0 };
+    var stepFn = function (ts) {
+      if (start === null) start = ts;
+      var t = Math.min(1, (ts - start) / ms);
+      var e = t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
+      if (t >= 1) { finish(); return; }
+      cur.pos = from + (to - from) * e;
+      cur.x = E.frac(Math.round(cur.pos * 100), 100);
+      cur.style = "decimal";
+      showX(eq);
+      travel.id = requestAnimationFrame(stepFn);
+    };
+    travel.id = requestAnimationFrame(stepFn);
   }
 
-  function drawBalance() {
-    var eq = EQS[state.current], r = rec(eq), v = balanceView(eq, r);
-    view.update({ eq: eq, x: v.x, style: v.style, tilt: v.tilt, highlight: feedbackHighlight });
+  /* ---------- the arrow at "=" ---------- */
+
+  function drawArrow(eq) {
+    var a = document.getElementById("eq-arrow");
+    if (!a) return;
+    var sr = $("arrow-sr");
+    if (!cur.landed || !cur.x) { a.hidden = true; a.removeAttribute("data-heavier"); sr.textContent = ""; return; }
+    var c = M.compare(eq, cur.x);
+    var glyph = c.heavier === "left" ? "◀" : c.heavier === "right" ? "▶" : "✓";
+    var words = c.heavier === "left" ? "left heavier" : c.heavier === "right" ? "right heavier" : "balanced";
+    a.hidden = false;
+    a.setAttribute("data-heavier", c.heavier);
+    a.innerHTML = "<span class=\"eq-arrow-glyph\" aria-hidden=\"true\">" + glyph + "</span><span class=\"eq-arrow-text\">" + words + "</span>";
+    sr.textContent = "x = " + E.fmtValue(cur.x, cur.style) + ": " + words + ".";
   }
 
-  /* ---------- the guess log ---------- */
+  /* ---------- the x-box beside the slider (resizes like the pan boxes) ---------- */
 
-  function heavierWord(h) { return h === "left" ? "Left" : h === "right" ? "Right" : "Balanced"; }
+  function drawXBox(x, style) {
+    var box = $("xbox");
+    if (!x) { box.textContent = "x"; box.className = "xbox is-unknown"; box.style.width = box.style.height = ""; return; }
+    var v = Math.abs(posOf(x)), side = Math.max(38, Math.min(52, 20 * Math.sqrt(v)));
+    var s = E.fSign(x);
+    box.className = "xbox" + (s === 0 ? " is-zero" : s < 0 ? " is-negative" : "");
+    box.style.width = box.style.height = side.toFixed(1) + "px";
+    box.textContent = E.fmtValue(x, style);
+    box.style.fontSize = (box.textContent.length > 4 ? 0.8 : 1) + "rem";
+  }
 
-  function drawLog(eq, r) {
-    var withDiff = eq.part === 1;
-    var head = "<tr><th scope=\"col\">#</th><th scope=\"col\"><span class=\"eqn-x\">x</span></th>" +
-      "<th scope=\"col\">Left</th><th scope=\"col\">Right</th><th scope=\"col\">Heavier</th>" +
-      (withDiff ? "<th scope=\"col\">Difference</th>" : "") + "</tr>";
-    $("log-head").innerHTML = head;
-    var body = $("log-body");
-    body.textContent = "";
-    if (eq.part === 3) { $("log").parentNode.hidden = true; return; }
-    $("log").parentNode.hidden = false;
-    for (var i = 0; i < F.GUESSES; i++) {
-      var g = r.guesses[i], tr = document.createElement("tr");
-      var cells;
-      if (!g) {
-        cells = [String(i + 1), "", "", "", ""];
-        if (withDiff) cells.push("");
-        tr.className = "log-empty";
-      } else {
-        var c = M.compare(eq, g.x);
-        cells = [String(i + 1) + (g.given ? " given" : ""), E.fmtValue(g.x, g.style),
-          E.fmtValue(c.left, g.style), E.fmtValue(c.right, g.style), g.answered ? heavierWord(c.heavier) : "?"];
-        if (withDiff) cells.push(g.answered ? E.fmtValue(c.diff, g.style) : "?");
-        if (!g.answered) tr.className = "log-pending";
+  /* ---------- the number line: ticks, labels, guess markers ---------- */
+
+  function nlLeft(eq, v) {
+    var lo = eq.sliderRange[0], hi = eq.sliderRange[1], f = (v - lo) / (hi - lo);
+    return "calc(var(--thumb) / 2 + (100% - var(--thumb)) * " + f.toFixed(5) + ")";
+  }
+  function drawTicks(eq) {
+    var ticks = $("nl-ticks"), lo = eq.sliderRange[0], hi = eq.sliderRange[1];
+    ticks.textContent = "";
+    for (var v = lo; v <= hi; v++) {
+      var t = document.createElement("span");
+      var major = v % 5 === 0;
+      t.className = "nl-tick" + (major ? " is-major" : "") + (v === 0 ? " is-zero" : "");
+      t.style.left = nlLeft(eq, v);
+      ticks.appendChild(t);
+      if (major) {
+        var lab = document.createElement("span");
+        lab.className = "nl-num";
+        lab.style.left = nlLeft(eq, v);
+        lab.textContent = E.fmtValue(E.frac(v));
+        ticks.appendChild(lab);
       }
-      cells.forEach(function (text, k) {
-        var td = document.createElement(k === 0 ? "th" : "td");
-        if (k === 0) {
-          td.scope = "row";
-          var parts = text.split(" ");
-          td.textContent = parts[0];
-          if (parts[1]) { var s = document.createElement("span"); s.className = "given"; s.textContent = "given"; td.appendChild(s); }
-        } else td.textContent = text;
-        tr.appendChild(td);
-      });
-      body.appendChild(tr);
+    }
+  }
+  /* Markers sit above the line; markers too close together stack into rows so none hides another. */
+  var MARKER_GAP_PX = 26, MARKER_ROW_PX = 25;
+  function drawMarkers(eq, r) {
+    var box = $("nl-markers"), nl = $("nl");
+    box.textContent = "";
+    var lo = eq.sliderRange[0], hi = eq.sliderRange[1];
+    var usable = Math.max(1, nl.clientWidth - 26);
+    var rows = []; // last pixel x used in each row
+    var items = r.guesses.map(function (g) { return { g: g, px: (posOf(g.x) - lo) / (hi - lo) * usable }; });
+    items.slice().sort(function (a, b) { return a.px - b.px; }).forEach(function (it) {
+      var k = 0;
+      while (k < rows.length && it.px - rows[k] < MARKER_GAP_PX) k++;
+      rows[k] = it.px; it.row = k;
+    });
+    items.forEach(function (it) {
+      var g = it.g, c = M.compare(eq, g.x);
+      var m = document.createElement("span");
+      m.className = "nl-marker is-" + c.heavier;
+      m.style.left = nlLeft(eq, posOf(g.x));
+      m.style.top = ((rows.length - 1 - it.row) * MARKER_ROW_PX) + "px";
+      m.setAttribute("data-heavier", c.heavier);
+      m.innerHTML = "<span aria-hidden=\"true\">" + (c.heavier === "left" ? "\u25C0" : c.heavier === "right" ? "\u25B6" : "\u2713") +
+        "</span><span class=\"sr-only\">x = " + E.fmtValue(g.x, g.style) + ", " +
+        (c.heavier === "balanced" ? "balanced" : c.heavier + " heavier") + "</span>";
+      box.appendChild(m);
+    });
+    nl.style.setProperty("--marker-rows", Math.max(1, rows.length));
+  }
+
+  /* ---------- guess cards ---------- */
+
+  function drawCards(eq, r) {
+    var box = $("cards");
+    box.textContent = "";
+    box.hidden = eq.part === 3;
+    for (var i = 0; i < F.GUESSES; i++) {
+      var g = r.guesses[i], card = document.createElement("div");
+      if (!g) {
+        card.className = "card-guess is-empty";
+        card.innerHTML = "<span class=\"card-num\">" + (i + 1) + "</span>";
+        box.appendChild(card);
+        continue;
+      }
+      card.className = "card-guess";
+      var c = M.compare(eq, g.x);
+      var s = E.fSign(g.x);
+      card.innerHTML =
+        "<span class=\"card-num\">" + (i + 1) + (g.given ? "<span class=\"given\">given</span>" : "") + "</span>" +
+        "<span class=\"card-x\"><span class=\"eqn-x\">x</span> = <span class=\"card-box" + (s === 0 ? " is-zero" : s < 0 ? " is-negative" : "") +
+        "\">" + E.fmtValue(g.x, g.style) + "</span></span>" +
+        "<span class=\"card-totals\"><span>" + E.fmtValue(c.left, g.style) + "</span><span class=\"card-bar\" aria-hidden=\"true\">|</span><span>" +
+        E.fmtValue(c.right, g.style) + "</span></span>" +
+        "<svg class=\"card-beam\" aria-hidden=\"true\"></svg>" +
+        "<span class=\"sr-only\">" + (c.heavier === "balanced" ? "balanced" : c.heavier + " heavier") + "</span>";
+      BON.miniBeam(card.querySelector(".card-beam"), eq, g.x);
+      card.setAttribute("data-heavier", c.heavier);
+      box.appendChild(card);
     }
   }
 
@@ -162,9 +230,9 @@
       var r = state.eqs[eq.id];
       if (r && r.sort) { counts[r.sort]++; lists[r.sort].push(eq); }
     });
-    $("sortbar-toggle").innerHTML = "<span class=\"sortbar-label\">Sorted</span> " + COL_ORDER.map(function (k) {
-      return "<span class=\"sortbar-count\">" + CATS[k].title + " <b>" + counts[k] + "</b></span>";
-    }).join("") + "<span class=\"sortbar-caret\" aria-hidden=\"true\">▾</span>";
+    $("sortbar-toggle").innerHTML = "<span class=\"sortbar-label\">Sorted:</span> " + COL_ORDER.map(function (k) {
+      return "<b title=\"" + CATS[k].title + "\">" + counts[k] + "<span class=\"sr-only\"> " + CATS[k].title + "</span></b>";
+    }).join("<span aria-hidden=\"true\"> · </span>") + " <span class=\"sortbar-caret\" aria-hidden=\"true\">▾</span>";
     var panel = $("sortbar-panel");
     panel.textContent = "";
     COL_ORDER.forEach(function (k) {
@@ -185,309 +253,107 @@
     });
   }
   function toggleSortPanel(open) {
-    var btn = $("sortbar-toggle"), panel = $("sortbar-panel");
+    var panel = $("sortbar-panel");
     if (open === undefined) open = panel.hidden;
     panel.hidden = !open;
-    btn.setAttribute("aria-expanded", open ? "true" : "false");
+    $("sortbar-toggle").setAttribute("aria-expanded", open ? "true" : "false");
   }
   $("sortbar-toggle").addEventListener("click", function () { toggleSortPanel(); });
   document.addEventListener("click", function (e) {
     if (!$("sortbar-panel").hidden && !e.target.closest(".sortbar")) toggleSortPanel(false);
   });
 
-  /* ---------- small DOM helpers for the prompt ---------- */
+  /* ---------- the instruction bar ---------- */
 
-  function h(tag, attrs, children) {
-    var e = document.createElement(tag);
-    for (var k in attrs || {}) {
-      if (k === "text") e.textContent = attrs[k];
-      else if (k === "class") e.className = attrs[k];
-      else if (k.slice(0, 2) === "on") e.addEventListener(k.slice(2), attrs[k]);
-      else e.setAttribute(k, attrs[k]);
-    }
-    (children || []).forEach(function (c) { if (c) e.appendChild(typeof c === "string" ? document.createTextNode(c) : c); });
-    return e;
-  }
-  function choiceButtons(options, onPick, selected) {
-    return h("div", { "class": "choices" }, options.map(function (o) {
-      return h("button", { type: "button", "class": "btn choice", "data-choice": o.value,
-        "aria-pressed": selected === o.value ? "true" : "false", onclick: function () { onPick(o.value); } },
-        o.sub ? [h("span", { "class": "choice-title", text: o.label }), h("span", { "class": "choice-sub", text: o.sub })] : [o.label]);
-    }));
-  }
-  var CAT_OPTIONS = COL_ORDER.map(function (k) { return { value: k, label: CATS[k].title, sub: CATS[k].sub }; });
-  var SIDE_OPTIONS = [{ value: "left", label: "Left" }, { value: "right", label: "Right" }, { value: "balanced", label: "Balanced" }];
-
-  /* ---------- the prompt (right column, bottom) ---------- */
-
-  var ui = { heavierPick: null, message: "", messageKind: "" };
-
-  function setMessage(text, kind) {
-    ui.message = text; ui.messageKind = kind || "";
-    var m = document.querySelector("#prompt .prompt-msg");
-    if (m) { m.textContent = text; m.className = "prompt-msg" + (kind ? " is-" + kind : ""); }
-  }
-  function msgEl() {
-    return h("p", { "class": "prompt-msg" + (ui.messageKind ? " is-" + ui.messageKind : ""), role: "status", text: ui.message });
-  }
-
-  function drawPrompt(eq, r) {
-    var p = $("prompt"), ph = phase(eq, r);
-    p.textContent = "";
-    p.setAttribute("data-phase", ph);
+  function drawInstruction(eq, r) {
+    var bar = $("instruction"), st = step(eq, r);
+    bar.textContent = "";
+    var p = document.createElement("p");
+    p.className = "instruction-text";
+    bar.appendChild(p);
     var focusTarget = null;
-
-    if (ph === "part3") {
-      p.appendChild(h("p", { "class": "prompt-q", text: "Part 3 comes in the next stage of the build." }));
-      return null;
-    }
-
-    if (ph === "guess") {
-      var g = pending(r), n = answeredCount(r);
-      if (r.note) p.appendChild(h("p", { "class": "prompt-note", text: T.secondValue }));
-      if (!g && seedDue(eq, r)) {
-        p.appendChild(msgEl());
-        var nb = h("button", { type: "button", "class": "btn btn-primary", id: "next-guess",
-          text: "Next: guess " + (n + 1) + " (given) \u203A", onclick: function () {
-            addSeed(eq, r); ui.message = ""; save(); render({ focus: true });
-          } });
-        p.appendChild(nb);
-        return nb;
-      }
-      if (!g) {
-        p.appendChild(h("p", { "class": "prompt-q" }, ["Guess " + (n + 1) + " of " + F.GUESSES + ": type a value for ",
-          h("span", { "class": "eqn-x", text: "x" }), "."]));
-        p.appendChild(msgEl());
-        return $("x-input");
-      }
-      p.appendChild(h("p", { "class": "prompt-step", text: "Guess " + (n + 1) + (g.given ? " (given)" : "") +
-        ": x = " + E.fmtValue(g.x, g.style) }));
-      var askDiff = eq.part === 1;
-      p.appendChild(h("p", { "class": "prompt-q", text: "Which side is heavier?" }));
-      var sides = choiceButtons(SIDE_OPTIONS, function (v) {
-        ui.heavierPick = v;
-        sides.querySelectorAll("button").forEach(function (b) { b.setAttribute("aria-pressed", b.dataset.choice === v ? "true" : "false"); });
-        if (!askDiff) submitGuessAnswer(eq, r, g, { heavier: v }, false);
-        else { var d = $("diff-input"); if (d) d.focus(); }
-      }, ui.heavierPick);
-      p.appendChild(sides);
-      focusTarget = sides.querySelector("button");
-      if (askDiff) {
-        var diffForm = h("form", { "class": "diff-form", onsubmit: function (e) {
-          e.preventDefault();
-          if (!ui.heavierPick) { setMessage("First choose Left, Right or Balanced.", "help"); return; }
-          submitGuessAnswer(eq, r, g, { heavier: ui.heavierPick, diff: $("diff-input").value }, true);
-        } }, [
-          h("label", { "for": "diff-input", "class": "diff-label", text: "Difference (larger − smaller)" }),
-          h("input", { id: "diff-input", "class": "small-input", type: "text", inputmode: "text", autocomplete: "off", spellcheck: "false" }),
-          h("button", { type: "submit", "class": "btn btn-primary", text: "Check" })
-        ]);
-        p.appendChild(diffForm);
-      }
-      p.appendChild(msgEl());
-      return focusTarget;
-    }
-
-    if (ph === "predict") {
-      p.appendChild(h("p", { "class": "prompt-q", text: "Predict: which column will this equation go in?" }));
-      var pc = choiceButtons(CAT_OPTIONS, function (v) {
-        r.prediction = v; save(); ui.message = ""; render({ focus: true });
-      }, null);
-      p.appendChild(pc);
-      return pc.querySelector("button");
-    }
-
-    if (ph === "slider" || ph === "solve" || ph === "done") {
-      p.appendChild(h("p", { "class": "prompt-live", id: "live-line" }));
-    }
-
-    if (ph === "slider") {
-      p.appendChild(h("p", { "class": "prompt-step", text: "You predicted: " + CATS[r.prediction].title }));
-      if (!r.sliderUsed) {
-        p.appendChild(h("p", { "class": "prompt-q", text: "The slider is unlocked. Use it to test your prediction." }));
-        return $("x-slider");
-      }
-      p.appendChild(h("p", { "class": "prompt-q", text: "Sort this equation:" }));
-      var sc = choiceButtons(CAT_OPTIONS, function (v) {
-        if (F.checkSort(eq, v)) {
-          r.sort = v; r.spotlight = false; save(); ui.message = ""; render({ focus: true });
-        } else {
-          r.sortTries++; r.spotlight = true; save(); render({ focus: true });
+    if (st === "part3") {
+      p.textContent = "Part 3 (the broken slider) comes in a later build.";
+    } else if (st === "guess") {
+      var n = r.guesses.length;
+      if (n < F.seedsFor(eq).length) {
+        p.textContent = n === 0 ? "Watch: the first guess is given." : "Given guess " + n + ": x = " +
+          E.fmtValue(r.guesses[n - 1].x, r.guesses[n - 1].style) + ". Watch the beam and the arrow.";
+        if (n > 0) {
+          var b = document.createElement("button");
+          b.type = "button"; b.className = "btn btn-primary"; b.id = "next-guess";
+          b.textContent = "Next: given guess " + (n + 1) + " ›";
+          b.addEventListener("click", function () { addGuess(eq, r, F.seedsFor(eq)[n], "int", true); });
+          bar.appendChild(b);
+          focusTarget = b;
         }
-      }, null);
-      if (r.spotlight) sc.querySelectorAll("button").forEach(function (b) { b.disabled = true; });
-      p.appendChild(sc);
-      return r.spotlight ? $("x-slider") : sc.querySelector("button");
+      } else {
+        p.textContent = "Guess " + (n + 1) + " of " + F.GUESSES + ": type a value for x.";
+        focusTarget = input;
+      }
+      if (r.note) {
+        var note = document.createElement("p");
+        note.className = "instruction-note";
+        note.textContent = T.secondValue;
+        bar.appendChild(note);
+      }
+    } else {
+      p.textContent = "Five guesses done. Predict comes next (in the next part of the build).";
+      if (state.current < EQS.length - 1) {
+        var nb = document.createElement("button");
+        nb.type = "button"; nb.className = "btn"; nb.textContent = "Next equation ›";
+        nb.addEventListener("click", function () { go(1); });
+        bar.appendChild(nb);
+        focusTarget = nb;
+      }
     }
-
-    if (ph === "solve") {
-      p.appendChild(h("p", { "class": "prompt-step", text: "Sorted: " + CATS[r.sort].title }));
-      p.appendChild(h("p", { "class": "prompt-q", text: "Solve it on paper. Your result:" }));
-      var form = h("form", { "class": "solve-form", onsubmit: function (e) {
-        e.preventDefault();
-        var res = F.checkSolve(eq, $("solve-left").value, $("solve-right").value);
-        if (res.status === "agree" || res.status === "disagree") {
-          r.solve = { left: $("solve-left").value, right: $("solve-right").value, status: res.status, entered: res.entered };
-          r.done = true; save();
-          ui.message = res.message; ui.messageKind = res.status === "agree" ? "ok" : "help";
-          render({ focus: true });
-        } else setMessage(res.message, "help");
-      } }, [
-        h("input", { id: "solve-left", "class": "small-input", type: "text", autocomplete: "off", spellcheck: "false", "aria-label": "Left side of your result" }),
-        h("span", { "class": "solve-eq", "aria-hidden": "true", text: "=" }),
-        h("input", { id: "solve-right", "class": "small-input", type: "text", autocomplete: "off", spellcheck: "false", "aria-label": "Right side of your result" }),
-        h("button", { type: "submit", "class": "btn btn-primary", text: "Check" })
-      ]);
-      p.appendChild(form);
-      p.appendChild(msgEl());
-      return $("solve-left");
-    }
-
-    // done
-    p.appendChild(h("p", { "class": "prompt-step", text: "Sorted: " + CATS[r.sort].title + ". Your result: " + r.solve.entered }));
-    p.appendChild(msgEl());
-    var last = state.current === EQS.length - 1;
-    var nextBtn = h("button", { type: "button", "class": "btn btn-primary", id: "prompt-next",
-      text: last ? "Finished" : "Next equation ›", onclick: function () { go(1); } });
-    if (last) nextBtn.disabled = true;
-    p.appendChild(nextBtn);
-    return nextBtn;
+    return focusTarget;
   }
 
-  function submitGuessAnswer(eq, r, g, answer, askDiff) {
-    var res = F.checkGuess(eq, g.x, g.style, answer, askDiff);
-    if (!res.ok) {
-      g.tries++; save();
-      feedbackHighlight = res.highlight;
-      setMessage(res.message, "help");
-      drawBalance();
-      if (res.field === "diff") { var d = $("diff-input"); if (d) { d.focus(); d.select(); } }
-      return;
-    }
-    g.answered = true;
-    feedbackHighlight = null;
-    ui.heavierPick = null;
-    var balancedNow = res.cmp.heavier === "balanced";
-    var firstBalance = balancedNow && !r.note && answeredCount(r) < F.GUESSES;
-    if (firstBalance) r.note = true;
-    ui.message = M.resultText(res.cmp, g.style) + ".";
-    ui.messageKind = "ok";
-    save();
-    render({ focus: true });
+  /* ---------- guessing ---------- */
+
+  function addGuess(eq, r, x, style, given) {
+    if (travel) return;
+    input.disabled = true; $("x-try").disabled = true;
+    var nb = $("next-guess"); if (nb) nb.disabled = true;
+    travelTo(eq, x, style, function () {
+      r.guesses.push({ x: x, style: style, given: !!given });
+      if (!r.note && M.compare(eq, x).heavier === "balanced" && r.guesses.length < F.GUESSES) r.note = true;
+      if (!given) input.value = "";
+      save();
+      render({ focus: true, keepX: true });
+      if (eq.id === 1 && !state.coachSeen && r.guesses.length === 1) startCoach();
+    });
   }
 
-  /* ---------- x entry and slider ---------- */
-
-  var input = $("x-input"), slider = $("x-slider");
-
-  function drawEntry(eq, r) {
-    var ph = phase(eq, r), p = pending(r);
-    var guessing = ph === "guess" && !p, sliding = ph === "slider" || ph === "solve" || ph === "done";
-    input.disabled = !(guessing || sliding);
-    $("x-try").hidden = sliding;
-    $("x-try").disabled = !guessing;
-    if (ph === "guess" && p) input.value = E.fmtValue(p.x, p.style);
-    else if (guessing && document.activeElement !== input) input.value = "";
-    else if (sliding && document.activeElement !== input) input.value = E.fmtValue(r.sliderX, r.sliderStyle);
-    else if (ph === "predict" || ph === "part3") input.value = "";
-    if (!guessing && !sliding) $("x-msg").textContent = "";
-
-    var locked = !sliding;
-    slider.disabled = locked;
-    slider.min = eq.sliderRange[0]; slider.max = eq.sliderRange[1];
-    $("slider-min").textContent = E.fmtValue(E.frac(eq.sliderRange[0]));
-    $("slider-max").textContent = E.fmtValue(E.frac(eq.sliderRange[1]));
-    $("slider-lock").hidden = !locked;
-    $("slider-row").classList.toggle("is-locked", locked);
-    $("slider-row").hidden = eq.part === 3;
-    if (sliding) slider.value = E.fmtValueAscii(roundToHundredths(r.sliderX));
-    else slider.value = "0";
-  }
-  function roundToHundredths(f) {
-    return E.isHundredths(f) ? f : E.frac(Math.round(f.n * 100 / f.d), 100); // only positions the thumb
-  }
-
-  function drawLiveLine(eq, r) {
-    var el = $("live-line");
-    if (!el || !r.sliderX) return;
-    var c = M.compare(eq, r.sliderX);
-    el.textContent = "x = " + E.fmtValue(r.sliderX, r.sliderStyle) + ": " + M.resultText(c, r.sliderStyle);
-  }
-
-  /* Slider moved or a value typed while the slider is unlocked: update live, never logged. */
-  function useSlider(x, style, fromSlider) {
-    var eq = EQS[state.current], r = rec(eq);
-    r.sliderX = x; r.sliderStyle = style;
-    var wasSpot = r.spotlight, wasUnused = !r.sliderUsed;
-    r.sliderUsed = true;
-    if (wasSpot) r.spotlight = false;
-    if (!fromSlider) slider.value = E.fmtValueAscii(roundToHundredths(x));
-    if (fromSlider && document.activeElement !== input) input.value = E.fmtValue(x, style);
-    save();
-    if (wasSpot || wasUnused) render({ keepFocus: true });
-    else { drawBalance(); drawLiveLine(eq, r); }
-  }
-
-  slider.addEventListener("input", function () {
-    var p = E.parseNumber(slider.value);
-    if (!p.ok) return;
-    useSlider(p.value, "decimal", true);
-  });
-  slider.addEventListener("keydown", function (e) {
-    var step = e.key === "PageUp" ? 1 : e.key === "PageDown" ? -1 : 0;
-    if (!step) return;
-    e.preventDefault();
-    var eq = EQS[state.current], r = rec(eq);
-    var x = E.fAdd(roundToHundredths(r.sliderX || E.frac(0)), E.frac(step));
-    if (E.fCmp(x, E.frac(eq.sliderRange[0])) < 0) x = E.frac(eq.sliderRange[0]);
-    if (E.fCmp(x, E.frac(eq.sliderRange[1])) > 0) x = E.frac(eq.sliderRange[1]);
-    useSlider(x, "decimal", true);
-  });
-
-  function readTyped() {
-    var p = E.parseNumber(input.value);
-    var msg = $("x-msg");
-    if (p.ok) { msg.textContent = ""; return p; }
-    msg.textContent = p.partial ? (input.value.trim() === "" ? "" : T.notNumberYet) : p.zeroDen ? T.zeroDen : T.notNumber;
-    return null;
-  }
-  input.addEventListener("input", function () {
-    var eq = EQS[state.current], r = rec(eq), ph = phase(eq, r);
-    var p = readTyped();
-    if (p && (ph === "slider" || ph === "solve" || ph === "done")) {
-      if (Math.abs(p.value.n / p.value.d) > 999) { $("x-msg").textContent = "Try a number between −999 and 999."; return; }
-      useSlider(p.value, p.style, false);
-    }
-  });
   $("x-form").addEventListener("submit", function (e) {
     e.preventDefault();
     var eq = EQS[state.current], r = rec(eq);
-    if (phase(eq, r) !== "guess" || pending(r)) return;
-    var p = readTyped();
-    if (!p) { if (input.value.trim() === "") $("x-msg").textContent = T.notNumber; input.focus(); return; }
-    if (Math.abs(p.value.n / p.value.d) > 999) { $("x-msg").textContent = "Try a number between −999 and 999."; return; }
-    if (F.isDuplicate(r.guesses, p.value)) { $("x-msg").textContent = T.duplicate(E.fmtValue(p.value, p.style)); input.select(); return; }
-    r.guesses.push({ x: p.value, style: p.style, given: false, answered: false, tries: 0 });
-    ui.message = ""; ui.heavierPick = null; feedbackHighlight = null;
-    save();
-    render({ focus: true });
+    if (step(eq, r) !== "guess" || seedDue(eq, r) || travel) return;
+    var res = F.readGuess(eq, r.guesses, input.value);
+    if (!res.ok) { $("x-msg").textContent = res.message; input.focus(); input.select(); return; }
+    $("x-msg").textContent = "";
+    addGuess(eq, r, res.value, res.style, false);
+  });
+  input.addEventListener("input", function () {
+    var p = E.parseNumber(input.value);
+    $("x-msg").textContent = !p.ok && p.partial && input.value.trim() !== "" ? T.notNumberYet : "";
   });
 
   /* ---------- navigation ---------- */
 
   function go(delta) {
     var i = state.current + delta;
-    if (i < 0 || i >= EQS.length) return;
+    if (i < 0 || i >= EQS.length || travel) return;
     if (delta > 0 && !isUnlocked(i)) return;
     state.current = i;
-    ui = { heavierPick: null, message: "", messageKind: "" };
-    feedbackHighlight = null;
     save();
     render({ focus: true });
   }
   $("back").addEventListener("click", function () { go(-1); });
   $("next").addEventListener("click", function () { go(1); });
   document.addEventListener("keydown", function (e) {
+    if (!$("coach").hidden) { if (e.key === "Escape") endCoach(); return; }
     if (e.key === "Escape") { toggleSortPanel(false); return; }
     if (e.ctrlKey || e.metaKey || e.altKey) return;
     var t = e.target;
@@ -496,42 +362,125 @@
     if (e.key === "b" || e.key === "B") { if (!$("back").disabled) go(-1); }
   });
   $("start-over").addEventListener("click", function () {
-    if (!window.confirm("Start over? This clears all your guesses, sorts and results on this computer.")) return;
+    if (!window.confirm("Start over? This clears all your guesses and answers on this computer.")) return;
     try { localStorage.removeItem(KEY); } catch (e) { /* nothing saved */ }
-    state = blank(); ui = { heavierPick: null, message: "", messageKind: "" }; feedbackHighlight = null;
+    state = blank();
     render({ focus: true });
   });
 
+  /* ---------- coach marks (equation 1, replayable with "?") ---------- */
+
+  var COACH = [
+    { target: function () { return $("eq-display"); }, text: "This is the equation: one side goes on each pan." },
+    { target: function () { return $("xbox-wrap"); }, text: "This box is x: it shows the value x has right now." },
+    { target: function () { return document.querySelector(".bon-pan[data-side=left] .bon-pieces") ? $("balance-box") : null; },
+      text: "The pans hold the two sides: a box for each x, a ball for each number." },
+    { target: function () { return document.querySelector(".bon-pan [data-shape=weight] circle"); },
+      text: function (el) { return "A green " + el.parentNode.getAttribute("data-label") + " ball adds that much weight to its pan."; } },
+    { target: function () { return $("nl"); }, text: "Type a guess for x and the slider travels to it on this number line." },
+    { target: function () { return $("cards"); }, text: "Each guess leaves a card: the two sides and which way the beam tipped." }
+  ];
+  var coachAt = -1, coachReturn = null;
+
+  function startCoach() {
+    coachReturn = document.activeElement;
+    coachAt = -1;
+    $("coach").hidden = false;
+    coachNext();
+  }
+  function endCoach() {
+    $("coach").hidden = true;
+    coachAt = -1;
+    state.coachSeen = true; save();
+    var eq = EQS[state.current];
+    var f = drawInstruction(eq, rec(eq));
+    (f && !f.disabled ? f : coachReturn && coachReturn.focus ? coachReturn : input).focus();
+  }
+  function coachNext() {
+    coachAt++;
+    while (coachAt < COACH.length && !COACH[coachAt].target()) coachAt++;
+    if (coachAt >= COACH.length) { endCoach(); return; }
+    var c = COACH[coachAt], target = c.target();
+    var rect = target.getBoundingClientRect(), pad = 8;
+    var ring = $("coach-ring");
+    ring.style.left = (rect.left - pad) + "px"; ring.style.top = (rect.top - pad) + "px";
+    ring.style.width = (rect.width + 2 * pad) + "px"; ring.style.height = (rect.height + 2 * pad) + "px";
+    $("coach-text").textContent = typeof c.text === "function" ? c.text(target) : c.text;
+    $("coach-count").textContent = (coachAt + 1) + " of " + COACH.length;
+    var last = COACH.slice(coachAt + 1).every(function (k) { return !k.target(); });
+    $("coach-next").textContent = last ? "Done" : "Next";
+    var bubble = $("coach-bubble");
+    bubble.style.left = "0px"; bubble.style.top = "0px";
+    var bw = bubble.offsetWidth, bh = bubble.offsetHeight;
+    var below = rect.bottom + pad + 12, above = rect.top - pad - 12 - bh;
+    var top = below + bh <= innerHeight - 8 ? below : above >= 8 ? above : Math.max(8, innerHeight - bh - 8);
+    var left = Math.min(innerWidth - bw - 12, Math.max(12, rect.left + rect.width / 2 - bw / 2));
+    bubble.style.left = left + "px"; bubble.style.top = top + "px";
+    $("coach-next").focus();
+  }
+  $("coach-next").addEventListener("click", coachNext);
+  $("coach-skip").addEventListener("click", endCoach);
+  $("help").addEventListener("click", function () { if (!travel) startCoach(); });
+
   /* ---------- draw everything ---------- */
+
+  var drawnEq = null;
 
   function render(how) {
     how = how || {};
-    var eq = EQS[state.current], r = rec(eq);
-    if (r.guesses.length === 0) addSeed(eq, r);
-    var ph = phase(eq, r);
-    if (ph === "slider" || ph === "solve" || ph === "done") sliderStart(eq, r);
+    var eq = EQS[state.current], r = rec(eq), st = step(eq, r);
+    var newEq = drawnEq !== eq.id;
+    drawnEq = eq.id;
+
+    document.body.setAttribute("data-step", st === "part3" ? "guess" : st);
+    document.body.setAttribute("data-part", eq.part);
+    Array.prototype.forEach.call($("steps").children, function (li) {
+      var on = li.getAttribute("data-step") === (st === "part3" ? "answer" : st);
+      if (on) li.setAttribute("aria-current", "step"); else li.removeAttribute("aria-current");
+    });
 
     $("eq-number").textContent = eq.id;
     BON.renderEquation($("eq-display"), eq, { emphasis: eq.part === 2 });
-    $("progress").textContent = "Equation " + eq.id + " of " + EQS.length;
+    var eqSign = $("eq-display").querySelector(".eqn-eq");
+    var arrow = document.createElement("span");
+    arrow.className = "eq-arrow"; arrow.id = "eq-arrow"; arrow.hidden = true;
+    eqSign.appendChild(arrow);
+
+    $("progress").textContent = eq.id + " of " + EQS.length;
+    $("progress").setAttribute("aria-label", "Equation " + eq.id + " of " + EQS.length);
     $("back").disabled = state.current === 0;
     $("next").disabled = state.current === EQS.length - 1 || !isUnlocked(state.current + 1);
-    document.body.setAttribute("data-part", eq.part);
 
-    drawEntry(eq, r);
-    drawLog(eq, r);
+    if (newEq) drawTicks(eq);
+    drawMarkers(eq, r);
+    drawCards(eq, r);
     drawSortBar();
-    var focusTarget = drawPrompt(eq, r);
-    drawLiveLine(eq, r);
-    drawBalance();
 
-    var spot = ph === "slider" && r.spotlight;
-    $("veil").hidden = !spot;
-    document.body.classList.toggle("is-spotlight", spot);
-    $("spot-msg").textContent = spot ? T.checkSlider : "";
+    // the current x: the last guess, landed (unless a guess was just made, which already set it)
+    if (newEq || !how.keepX) {
+      var last = r.guesses[r.guesses.length - 1];
+      cur = last ? { x: last.x, style: last.style, pos: posOf(last.x), landed: true } : { x: null, style: "int", pos: 0, landed: false };
+      slider.classList.toggle("is-arrived", !!last);
+    }
+    showX(eq);
 
-    if (how.focus && focusTarget && !how.keepFocus && !focusTarget.disabled) focusTarget.focus();
+    var guessing = st === "guess" && !seedDue(eq, r);
+    input.disabled = !guessing;
+    $("x-try").disabled = !guessing;
+    if (!guessing) $("x-msg").textContent = "";
+    slider.disabled = true; // unlocks after five guesses and a prediction (Stage B)
+    $("x-area").classList.toggle("is-part3", st === "part3");
+
+    var focusTarget = drawInstruction(eq, r);
+    if (how.focus && focusTarget && !focusTarget.disabled && $("coach").hidden) focusTarget.focus();
+
+    // equations 1-3: the first given guess plays as soon as the equation opens
+    if (st === "guess" && r.guesses.length === 0 && seedDue(eq, r) && !travel) {
+      addGuess(eq, r, F.seedsFor(eq)[0], "int", true);
+    }
   }
+
+  window.addEventListener("resize", function () { var eq = EQS[state.current]; drawMarkers(eq, rec(eq)); });
 
   render();
 })();

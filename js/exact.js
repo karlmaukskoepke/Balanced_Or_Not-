@@ -1,5 +1,5 @@
 /*
- * Exact arithmetic for Balanced or Not?
+ * Exact arithmetic for What Makes It Balance?
  *
  * No floating-point math is used for any value a student sees.
  * - Values of x on the balance are whole numbers of HUNDREDTHS (x = 1.33 is stored as 133).

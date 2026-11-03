@@ -34,7 +34,7 @@ test("12 equations, numbered 1-12, parts as in the table", () => {
   assert.deepEqual(plain(BON.EQUATIONS).map((q) => q.part), [1, 1, 1, 1, 1, 1, 1, 2, 2, 2, 3, 3]);
 });
 test("display strings match the paper sheet", () => {
-  const paper = ["2x + 3 = x + 7", "3x + 2 = x − 4", "4x + 1 = x + 5", "2x + 3 = 2x + 8", "4x + 2 = 4x − 6",
+  const paper = ["2x + 3 = x + 7", "3x + 2 = x − 4", "x + 5 = 4x + 1", "2x + 3 = 2x + 8", "4x + 2 = 4x − 6",
     "3x − 5 = 3x − 5", "5 + x + x = 2x + 5", "5x + 2 = 5x + 3", "3x + 4 = 4", "2x + 3 + x = 3x + 3",
     "3x − 6 + x = 4x + 1", "5x − 2 = 2x + 10"];
   assert.deepEqual(plain(BON.EQUATIONS.map((q) => M.equationText(q))), paper);
@@ -85,14 +85,19 @@ test("fractions stay exact", () => {
 });
 
 console.log("Spec section 13 (numbers)");
+test("#3 (flipped x + 5 = 4x + 1): left heavier at 0, right heavier at 3", () => {
+  assert.equal(cmpH(EQ(3), 0).heavier, "left");
+  assert.equal(cmpH(EQ(3), 300).heavier, "right");
+  assert.equal(cmpH(EQ(1), 0).heavier, "right", "the opposite of #1 for a low guess");
+});
 test("#3 near 1.33/1.34: never balanced, difference 0.01 at 1.33 (0.02 at 1.34), tilt at least the floor", () => {
   const q = EQ(3);
   const a = cmpH(q, 133), b = cmpH(q, 134);
-  assert.equal(a.heavier, "right"); assert.equal(b.heavier, "left");
+  assert.equal(a.heavier, "left"); assert.equal(b.heavier, "right");
   assert.equal(E.fmtValue(a.diff), "0.01"); assert.equal(E.fmtValue(b.diff), "0.02");
-  assert.ok(Math.abs(G.tiltFor(a.signedDiff)) >= G.MIN_TILT);
-  assert.ok(G.tiltFor(a.signedDiff) > 0, "right side down at 1.33");
-  assert.ok(G.tiltFor(b.signedDiff) < 0, "left side down at 1.34");
+  assert.ok(Math.abs(G.tiltFor(q, a.signedDiff)) >= G.MIN_TILT);
+  assert.ok(G.tiltFor(q, a.signedDiff) < 0, "left side down at 1.33 (flipped)");
+  assert.ok(G.tiltFor(q, b.signedDiff) > 0, "right side down at 1.34 (flipped)");
   for (const h of allSliderH(q)) assert.notEqual(cmpH(q, h).heavier, "balanced");
 });
 test("#9 at x = 0: balanced at 4 and 4; boxes are zero-boxes", () => {
@@ -112,7 +117,7 @@ test("#2 at x = −3: both sides −7; left 3 floating boxes −3 + a +2 weight;
     ["float-box:" + MINUS + "3", "float-box:" + MINUS + "3", "float-box:" + MINUS + "3", "weight:+2"]);
   assert.deepEqual(plain(lay.right.items).map((i) => i.shape + ":" + i.label),
     ["float-box:" + MINUS + "3", "balloon:" + MINUS + "4"]);
-  assert.equal(G.tiltFor(c.signedDiff), 0);
+  assert.equal(G.tiltFor(EQ(2), c.signedDiff), 0);
 });
 test("#2 left side at any negative x: three floating boxes with the same label", () => {
   for (const h of [-1, -50, -300, -1000]) {
@@ -125,16 +130,28 @@ test("#5 and #8 never level at any slider position", () => {
   for (const id of [5, 8]) for (const h of allSliderH(EQ(id))) {
     const c = cmpH(EQ(id), h);
     assert.notEqual(c.heavier, "balanced");
-    assert.ok(Math.abs(G.tiltFor(c.signedDiff)) >= G.MIN_TILT);
+    assert.ok(Math.abs(G.tiltFor(EQ(id), c.signedDiff)) >= G.MIN_TILT);
   }
 });
 test("#6, #7, #10 level at every slider position", () => {
   for (const id of [6, 7, 10]) for (const h of allSliderH(EQ(id))) assert.equal(cmpH(EQ(id), h).heavier, "balanced");
 });
-test("tilt is capped and grows with the difference", () => {
-  assert.equal(G.tiltFor(E.frac(0)), 0);
-  assert.ok(Math.abs(G.tiltFor(E.frac(1000))) <= G.MAX_TILT);
-  assert.ok(Math.abs(G.tiltFor(E.frac(1))) < Math.abs(G.tiltFor(E.frac(8))));
+test("tilt per equation: the largest difference on the slider reaches the cap; closer guesses are flatter", () => {
+  for (const q of BON.EQUATIONS) {
+    const ends = q.sliderRange.map((v) => Math.abs(G.tiltFor(q, M.compare(q, E.frac(v)).signedDiff)));
+    if (q.category === "one") {
+      assert.ok(Math.abs(Math.max(...ends) - G.MAX_TILT) < 1e-9, "cap reached at an end, equation " + q.id);
+      const sol = q.solution.n / q.solution.d;
+      let prev = 0;
+      for (let k = 1; k <= 5; k++) {         // moving away from the solution never makes the beam flatter
+        const t = Math.abs(G.tiltFor(q, M.compare(q, E.frac(Math.round((sol + k) * 100), 100)).signedDiff));
+        assert.ok(t >= prev, "equation " + q.id); prev = t;
+      }
+    }
+    if (q.category === "never") for (const h of allSliderH(q).filter((h) => h % 50 === 0))
+      assert.ok(Math.abs(Math.abs(G.tiltFor(q, cmpH(q, h).signedDiff)) - G.MAX_TILT * G.NEVER_SHARE) < 1e-9, "never: constant 60% tilt");
+  }
+  assert.equal(G.tiltFor(EQ(1), E.frac(0)), 0);
 });
 
 console.log("Readout");
@@ -178,19 +195,16 @@ test("seeds: #1 1 and 7, #2 −5 and 1, #3 0 and 3; none from #4 on; each pair b
     }
   }
 });
-test("heavier side and difference checking, with the hint wording", () => {
-  const q = EQ(2); // 3x + 2 = x − 4
-  let r = F.checkGuess(q, E.frac(-5), "int", { heavier: "left", diff: "4" }, true); // −13 vs −9
-  assert.equal(r.ok, false); assert.equal(r.field, "heavier"); assert.equal(r.highlight, "right");
-  assert.equal(r.message, `${MINUS}9 is greater than ${MINUS}13.`);
-  r = F.checkGuess(q, E.frac(-5), "int", { heavier: "right", diff: "22" }, true);
-  assert.equal(r.field, "diff"); assert.equal(r.message, `Larger minus smaller: ${MINUS}9 ${MINUS} (${MINUS}13).`);
-  assert.ok(F.checkGuess(q, E.frac(-5), "int", { heavier: "right", diff: "4" }, true).ok);
-  assert.ok(F.checkGuess(q, E.frac(-5), "int", { heavier: "right" }, false).ok, "Part 2 asks the side only");
-  assert.ok(F.checkGuess(q, E.frac(-3), "int", { heavier: "balanced", diff: "" }, true).ok, "balanced with a blank difference");
-  r = F.checkGuess(q, E.frac(-3), "int", { heavier: "left", diff: "0" }, true);
-  assert.equal(r.highlight, "both"); assert.ok(r.message.includes("Neither side is greater"));
-  assert.ok(F.checkGuess(EQ(1), E.frac(-1, 2), "fraction", { heavier: "right", diff: "4.5" }, true).ok, "4.5 = 9/2");
+test("reading a typed guess: range, duplicates, unfinished input", () => {
+  const q = EQ(1), g = [{ x: E.frac(4) }];
+  assert.ok(F.readGuess(q, g, "-1/2").ok);
+  assert.equal(F.readGuess(q, g, "4").message, "You already tried that one.");
+  assert.equal(F.readGuess(q, g, "8/2").message, "You already tried that one.");
+  assert.equal(F.readGuess(q, g, "11").message, `Try a value between ${MINUS}10 and 10.`);
+  assert.equal(F.readGuess(q, g, "-10.01").message, `Try a value between ${MINUS}10 and 10.`);
+  assert.ok(F.readGuess(q, g, "-10").ok && F.readGuess(q, g, "10").ok, "the ends are allowed");
+  assert.equal(F.readGuess(q, g, "-").message, "Keep typing: that isn't a number yet.");
+  assert.ok(!F.readGuess(q, g, "abc").ok);
 });
 test("duplicate guesses are caught exactly (2 = 2.0 = 4/2)", () => {
   const g = [{ x: E.frac(2) }];
@@ -228,9 +242,13 @@ test("pieces never pass the top of their band (so never reach the beam) for ever
     for (const s of ["left", "right"]) for (const it of lay[s].items) {
       const top = it.y - it.h / 2;
       if (it.band === "weight") assert.ok(top >= -G.WEIGHT_BAND.h - 0.01, `eq ${q.id} x ${h}: weight too tall`);
-      else assert.ok(top >= G.FLOAT_BAND.top - 0.01 && it.y + it.h / 2 <= G.FLOAT_BAND.top + G.FLOAT_BAND.h + 0.01,
-        `eq ${q.id} x ${h}: floater outside its band`);
-      assert.ok(Math.abs(it.x) + it.w / 2 <= G.WEIGHT_BAND.w / 2 + 6, `eq ${q.id} x ${h}: too wide for the pan`);
+      else {
+        const Z = G.FLOAT_ZONE, out = s === "left" ? -1 : 1;
+        assert.ok(top >= Z.top - 0.01 && it.y + it.h / 2 <= Z.top + Z.h + 0.01, `eq ${q.id} x ${h}: floater outside its zone (height)`);
+        assert.ok(out * it.x - it.w / 2 >= Z.inner - 0.01 && out * it.x + it.w / 2 <= Z.inner + Z.w + 0.01,
+          `eq ${q.id} x ${h}: floater outside its zone (beside the pan's outer edge)`);
+      }
+      if (it.band === "weight") assert.ok(Math.abs(it.x) + it.w / 2 <= G.WEIGHT_BAND.w / 2 + 6, `eq ${q.id} x ${h}: too wide for the pan`);
     }
   }
 });

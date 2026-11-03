@@ -14,7 +14,8 @@
     notNumberYet: "Keep typing: that isn't a number yet.",
     notNumber: "Type a number, like 3, −2, 1.5 or −1/2.",
     zeroDen: "The bottom of a fraction can't be 0.",
-    duplicate: function (xs) { return "You already tried x = " + xs + ". Try a different value."; },
+    duplicate: "You already tried that one.",
+    outOfRange: function (lo, hi) { return "Try a value between " + lo + " and " + hi + "."; },
     secondValue: "That balances. Can you find a different value that also balances?",
     checkSlider: "Check the slider again.",
     rounded: "That's a rounded value. Write the exact answer as an improper fraction, like 5/4 or 6/5.",
@@ -33,43 +34,26 @@
     return guesses.some(function (g) { return E.fEq(g.x, x); });
   }
 
-  function paren(f, style) { return E.fSign(f) < 0 ? "(" + E.fmtValue(f, style) + ")" : E.fmtValue(f, style); }
+
+  /* Is x inside the equation's slider range (ends included)? */
+  function inRange(eq, x) {
+    return E.fCmp(x, E.frac(eq.sliderRange[0])) >= 0 && E.fCmp(x, E.frac(eq.sliderRange[1])) <= 0;
+  }
 
   /*
-   * Check a guess answer.
-   *   answer: { heavier: "left"|"right"|"balanced", diff: "typed text" (Part 1 only) }
-   * Returns { ok: true } or { ok: false, field: "heavier"|"diff", message, highlight }.
-   * highlight tells the balance which total to mark "greater" ("left"/"right"), or "both" when equal.
+   * Read a typed guess. Returns { ok: true, value, style } or { ok: false, message }.
    */
-  function checkGuess(eq, x, style, answer, askDiff) {
-    var c = M.compare(eq, x);
-    var L = E.fmtValue(c.left, style), R = E.fmtValue(c.right, style);
-    if (answer.heavier !== c.heavier) {
-      if (c.heavier === "balanced") {
-        return { ok: false, field: "heavier", highlight: "both",
-          message: "Both sides are " + L + ". Neither side is greater." };
-      }
-      var big = c.heavier === "left" ? L : R, small = c.heavier === "left" ? R : L;
-      return { ok: false, field: "heavier", highlight: c.heavier,
-        message: big + " is greater than " + small + "." };
+  function readGuess(eq, guesses, text) {
+    var p = E.parseNumber(text);
+    if (!p.ok) {
+      return { ok: false, message: p.partial ? (String(text).trim() === "" ? TEXT.notNumber : TEXT.notNumberYet)
+        : p.zeroDen ? TEXT.zeroDen : TEXT.notNumber };
     }
-    if (askDiff) {
-      var typed = (answer.diff || "").trim();
-      if (typed === "" && c.heavier === "balanced") typed = "0";
-      var p = E.parseNumber(typed);
-      if (!p.ok) {
-        return { ok: false, field: "diff", highlight: null,
-          message: typed === "" ? "Now type the difference: larger minus smaller." : TEXT.notNumber };
-      }
-      if (!E.fEq(p.value, c.diff)) {
-        var larger = c.heavier === "right" ? c.right : c.left, smaller = c.heavier === "right" ? c.left : c.right;
-        return { ok: false, field: "diff", highlight: c.heavier === "balanced" ? "both" : c.heavier,
-          message: c.heavier === "balanced"
-            ? "Both sides are " + L + ", so the difference is " + L + " " + MINUS + " " + paren(c.left, style) + "."
-            : "Larger minus smaller: " + E.fmtValue(larger, style) + " " + MINUS + " " + paren(smaller, style) + "." };
-      }
+    if (!inRange(eq, p.value)) {
+      return { ok: false, message: TEXT.outOfRange(E.fmtValue(E.frac(eq.sliderRange[0])), E.fmtValue(E.frac(eq.sliderRange[1]))) };
     }
-    return { ok: true, cmp: c };
+    if (isDuplicate(guesses, p.value)) return { ok: false, message: TEXT.duplicate };
+    return { ok: true, value: p.value, style: p.style };
   }
 
   /* Sorting: the page only accepts the right column. */
@@ -123,6 +107,6 @@
 
   BON.flow = {
     GUESSES: GUESSES, TEXT: TEXT,
-    seedsFor: seedsFor, isDuplicate: isDuplicate, checkGuess: checkGuess, checkSort: checkSort, checkSolve: checkSolve
+    seedsFor: seedsFor, isDuplicate: isDuplicate, inRange: inRange, readGuess: readGuess, checkSort: checkSort, checkSolve: checkSolve
   };
 })(typeof window !== "undefined" ? window : globalThis);
