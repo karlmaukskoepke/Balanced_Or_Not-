@@ -110,12 +110,42 @@ test("#4, #5, #8, #11 never balance and hold one tilt; #6, #7, #10 always balanc
   }
   for (const id of [6, 7, 10]) for (const h of hundredths(EQ(id))) assert.equal(cmp(EQ(id), X(h)).heavier, "balanced");
 });
-test("tilt per equation: the end of the range reaches the cap; any nonzero difference shows the floor", () => {
+test("tilt per equation: the end of the range reaches the cap", () => {
   for (const q of BON.EQUATIONS.filter((q) => q.category === "one")) {
     const ends = q.sliderRange.map((v) => Math.abs(G.tiltFor(q, cmp(q, E.frac(v)).signedDiff)));
     assert.ok(Math.abs(Math.max(...ends) - G.MAX_TILT) < 1e-9, "equation " + q.id);
   }
-  assert.ok(Math.abs(G.tiltFor(EQ(3), cmp(EQ(3), X(133)).signedDiff)) >= G.MIN_TILT);
+});
+const tiltAt = (id, x) => G.tiltFor(EQ(id), cmp(EQ(id), x).signedDiff);
+test("section 13: #1 at x = 3, 3.5, 3.9, 3.99, 4: the tilt shrinks at every step and is level only at 4", () => {
+  const t = [X(300), X(350), X(390), X(399), X(400)].map((x) => Math.abs(tiltAt(1, x)));
+  for (let i = 1; i < t.length; i++) assert.ok(t[i] < t[i - 1], `tilt at step ${i} (${t[i]}) < ${t[i - 1]}`);
+  assert.ok(t[3] > 0, "3.99 is not level"); assert.equal(t[4], 0, "4 is level");
+});
+test("tilt = sign(d) * cap * (|d|/dmax)^0.6", () => {
+  // #1: d = (2x+3) - (x+7) = x - 4, dmax = 10 (at x = -6)
+  assert.ok(Math.abs(Math.abs(tiltAt(1, E.frac(3))) - G.MAX_TILT * Math.pow(1 / 10, 0.6)) < 1e-9);
+  assert.ok(tiltAt(1, E.frac(3)) > 0, "x = 3: the right side is heavier, so the right side goes down");
+});
+test("every change in x changes the tilt (one-solution equations, whole slider, 0.01 steps)", () => {
+  for (const id of [1, 2, 3, 9, 12]) {
+    const q = EQ(id); let prev = null;
+    for (const h of hundredths(q)) {
+      const t = tiltAt(id, X(h));
+      if (prev !== null) assert.notEqual(t, prev, `equation ${id} at ${h / 100}`);
+      prev = t;
+      if (t === 0) assert.equal(cmp(q, X(h)).heavier, "balanced", "only d = 0 is level");
+    }
+  }
+});
+test("#2 near −3, #3 at 4/3, #9 near 0, #12 near 4: closer is flatter; exact is level", () => {
+  const near = (id, sol, steps) => steps.map((d) => Math.abs(tiltAt(id, E.fAdd(sol, X(d)))));
+  for (const [id, sol] of [[2, E.frac(-3)], [3, E.frac(4, 3)], [9, E.frac(0)], [12, E.frac(4)]]) {
+    const t = near(id, sol, [100, 50, 10, 1]);
+    for (let i = 1; i < t.length; i++) assert.ok(t[i] < t[i - 1] && t[i] > 0, `equation ${id}`);
+    assert.equal(tiltAt(id, sol), 0, `equation ${id} level at the solution`);
+  }
+  assert.ok(Math.abs(tiltAt(3, X(133))) > 0 && Math.abs(tiltAt(3, X(134))) > 0, "#3 at 1.33 and 1.34 still tips");
 });
 
 console.log("Sizes and layout");
@@ -145,9 +175,40 @@ test("balloons rise straight up and never leave the top of the drawing, at the e
     for (const p of lay.floats) {
       assert.ok(Math.abs(p.cx) <= G.PAN_HALF, "tethered on the rim");
       assert.ok(raised + p.cy - p.size / 2 >= 0, `eq ${q.id} x ${v} ${s}: balloon top inside the drawing`);
-      assert.ok(p.cy + p.size / 2 < -lay.weightTop, "above the weights");
+      for (const wgt of lay.weights) {
+        const apart = Math.abs(p.cx - wgt.cx) >= (p.size + wgt.size) / 2 - 0.01 || p.cy + p.size / 2 <= wgt.cy - wgt.size / 2 + 0.01;
+        assert.ok(apart, `eq ${q.id} x ${v} ${s}: a balloon overlaps a piece on the pan`);
+      }
     }
   }
+});
+
+test("each pan: x-boxes and the constant are one group, centred, the constant right beside the boxes", () => {
+  for (const q of BON.EQUATIONS) for (const v of [-6, -1, 0, 1, 6]) for (const s of ["left", "right"]) {
+    const lay = G.layoutSide(M.modelFromEquation(q)[s], E.frac(v), "int", s);
+    const all = lay.weights.concat(lay.floats).sort((a, b) => a.cx - b.cx);
+    if (!all.length) continue;
+    assert.ok(lay.centred, `eq ${q.id} x ${v} ${s}: one centred group`);
+    const left = all[0].cx - all[0].size / 2, right = all[all.length - 1].cx + all[all.length - 1].size / 2;
+    assert.ok(Math.abs(left + right) < 0.01, `eq ${q.id} x ${v} ${s}: centred on the pan`);
+    for (let i = 1; i < all.length; i++) {
+      const gap = (all[i].cx - all[i].size / 2) - (all[i - 1].cx + all[i - 1].size / 2);
+      assert.ok(gap >= 3.99 && gap <= 10.01, `eq ${q.id} x ${v} ${s}: neighbours ${gap.toFixed(1)} apart (no overlap, no far edge)`);
+    }
+  }
+});
+test("five boxes and a constant balloon on one pan (#12: 5x − 2): one centred row inside the pan at −6, −1, 0, 6", () => {
+  for (const v of [-6, -1, 0, 6]) {
+    const lay = G.layoutSide(M.modelFromEquation(EQ(12)).left, E.frac(v), "int", "left");
+    const all = lay.weights.concat(lay.floats);
+    assert.ok(lay.centred && all.length === 6 && all.every((p) => Math.abs(p.cx) + p.size / 2 <= G.PAN_HALF), "x = " + v);
+  }
+});
+test("too wide for one row (five 6-balloons and a −6 balloon): the constant moves to the far side, no overlap", () => {
+  const lay = G.layoutSide({ groups: [5], c: -6, constFirst: false }, E.frac(-6), "int", "left");
+  const c = lay.floats.find((p) => p.shape === "balloon"), xs = lay.floats.filter((p) => p.shape === "x-balloon");
+  assert.ok(!lay.centred && c.cx < 0 && Math.abs(c.cx) + c.size / 2 <= G.PAN_HALF + 0.01, "far (outer) side, inside the pan");
+  assert.ok(xs.every((p) => c.cy + c.size / 2 <= p.cy - p.size / 2 + 0.01), "floats above the x-balloons");
 });
 
 console.log(`\n${passed} passed` + (process.exitCode ? ", some FAILED" : ""));

@@ -77,6 +77,20 @@ const check = (ok, msg) => { console.log((ok ? "  ok  " : "  FAIL ") + msg); if 
     check((await rel()) === "=" && /gradient/.test(eqStyle) && (await tots()).join("|") === "19/3|19/3", `${tag} #3: typing 4/3 reaches the gold = (19/3 and 19/3)`);
     await page.screenshot({ path: `${OUT}/${tag}-eq3-four-thirds.png` });
 
+    // ---- the beam keeps responding all the way to the solution (section 13) ----
+    await testEq(1, "3");
+    const tilts = [];
+    for (const v of ["3", "3.5", "3.9", "3.99", "4"]) { await type(v); tilts.push(Math.abs(await angle())); }
+    check(tilts.every((t, i) => i === 0 || t < tilts[i - 1]) && tilts[3] > 0 && tilts[4] === 0,
+      `${tag} #1 at 3, 3.5, 3.9, 3.99, 4: tilt ${tilts.map((t) => t.toFixed(2)).join(" > ")} (level only at 4)`);
+    for (const [id, vals] of [[2, ["-2", "-2.5", "-2.9", "-2.99", "-3"]], [3, ["2", "1.5", "1.4", "1.34", "4/3"]], [9, ["1", "0.5", "0.1", "0.01", "0"]], [12, ["5", "4.5", "4.1", "4.01", "4"]]]) {
+      await testEq(id, vals[0]);
+      const ts = [];
+      for (const v of vals) { await type(v); ts.push(Math.abs(await angle())); }
+      check(ts.every((t, i) => i === 0 || t < ts[i - 1]) && ts[3] > 0 && ts[4] === 0 && (await rel()) === "=",
+        `${tag} #${id}: ${vals.join(", ")}: tilt keeps shrinking, gold = at ${vals[4]}`);
+    }
+
     // ---- #9 at 0, #2 at −3 ----
     await testEq(9, "0");
     const zb = await page.$$eval("[data-shape='zero-box'] rect", (r) => r.map((x) => x.getAttribute("stroke-dasharray")));

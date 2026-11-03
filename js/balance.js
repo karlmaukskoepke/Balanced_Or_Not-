@@ -31,7 +31,7 @@
   var BEAM_HALF = 255, HANG = 120, PAN_HALF = 185;
   var S1 = 24, FLOOR = 30, UNKNOWN_SIDE = 36;
   var GAP_IN_GROUP = 4, GAP_BETWEEN = 10;
-  var MIN_TILT = 4, MAX_TILT = 18, NEVER_SHARE = 0.6;
+  var MAX_TILT = 18, NEVER_SHARE = 0.6, TILT_POWER = 0.6;
   var FOLLOW_MS = 70;
   var TOP_MARGIN = 4;
   var EXPR_DY = 62;
@@ -62,7 +62,9 @@
       var lo = eq.sliderRange[0], hi = eq.sliderRange[1];
       var f = function (x) { return Math.abs((k.A - k.C) * x + (k.B - k.D)); };
       var maxDiff = Math.max(f(lo), f(hi)) || 1;
-      t = Math.min(MAX_TILT, Math.max(MIN_TILT, MAX_TILT * Math.abs(signedDiff.n / signedDiff.d) / maxDiff));
+      // tilt = cap * (|d| / dmax)^0.6: every change in x changes the tilt; only d = 0 is level (no floor, no clamp
+      // below the cap, so the beam keeps responding all the way to the solution)
+      t = MAX_TILT * Math.pow(Math.min(1, Math.abs(signedDiff.n / signedDiff.d) / maxDiff), TILT_POWER);
     }
     return sign * t;
   }
@@ -101,7 +103,7 @@
     var xLabel = x ? E.fmtValue(x, style) : "x";
     function pushX(group, k) {
       for (var i = 0; i < k; i++) {
-        var p = { group: group, label: xLabel, value: x ? fv(x) : null };
+        var p = { group: group, order: i, label: xLabel, value: x ? fv(x) : null };
         if (!x) { p.shape = "unknown-box"; p.size = UNKNOWN_SIDE; weights.push(p); }
         else if (sign > 0) { p.shape = "box"; p.size = sizeOf(fv(x)); weights.push(p); }
         else if (sign === 0) { p.shape = "zero-box"; p.size = FLOOR; weights.push(p); }
@@ -110,7 +112,7 @@
     }
     function pushC(group) {
       if (!side.c) return;
-      var p = { group: group, value: side.c, label: (side.c > 0 ? "+" : BON.MINUS) + Math.abs(side.c), size: sizeOf(side.c) };
+      var p = { group: group, order: 0, value: side.c, label: (side.c > 0 ? "+" : BON.MINUS) + Math.abs(side.c), size: sizeOf(side.c) };
       p.shape = side.c > 0 ? "ball" : "balloon";
       (side.c > 0 ? weights : floats).push(p);
     }
@@ -118,12 +120,66 @@
     if (side.constFirst) pushC(g++);
     side.groups.forEach(function (k) { pushX(g++, k); });
     if (!side.constFirst) pushC(g++);
-    return { weights: weights, floats: floats };
+    var all = weights.concat(floats).sort(function (a, b) { return a.group - b.group || a.order - b.order; });
+    return { weights: weights, floats: floats, all: all };
   }
 
-  /* Place pieces in pan coordinates (0,0 = centre of the pan rim; y grows downward). */
+  /*
+   * Place pieces in pan coordinates (0,0 = centre of the pan rim; y grows downward).
+   * The x-boxes (or x-balloons) and the net constant form ONE group, in written order, centred on the pan:
+   * weights sit on the rim, balloons float straight up from their own spot in the row. Only when that row is
+   * too wide for the pan does the constant move to the far side (a balloon above the boxes, a ball on a
+   * second row).
+   */
+  var STRING = 30;
+  function rowWidth(list) {
+    return list.reduce(function (w, p, i) {
+      return w + p.size + (i === 0 ? 0 : (list[i - 1].group === p.group ? GAP_IN_GROUP : GAP_BETWEEN));
+    }, 0);
+  }
+  function maxRiseFor() { return (PIVOT.y + HANG - BEAM_HALF * Math.sin(MAX_TILT * Math.PI / 180)) - TOP_MARGIN; }
+
   function layoutSide(side, x, style, where) {
     var ps = sidePieces(side, x, style);
+    var maxW = 2 * PAN_HALF - 8, out = where === "left" ? -1 : 1;
+    var row = ps.all, aside = null;
+    if (rowWidth(row) > maxW) {
+      aside = row.filter(function (p) { return p.shape === "ball" || p.shape === "balloon"; })[0] || null;
+      if (aside) row = row.filter(function (p) { return p !== aside; });
+    }
+    if (rowWidth(row) > maxW) return layoutCrowded(ps, where); // only with very large free-play values
+    var px = -rowWidth(row) / 2, weightTop = 0;
+    row.forEach(function (p, i) {
+      px += i === 0 ? 0 : (row[i - 1].group === p.group ? GAP_IN_GROUP : GAP_BETWEEN);
+      p.cx = px + p.size / 2;
+      px += p.size;
+      if (p.shape !== "x-balloon" && p.shape !== "balloon") { p.cy = -p.size / 2; weightTop = Math.max(weightTop, p.size); }
+    });
+    if (aside && aside.shape === "ball") {           // a ball that doesn't fit goes on top, at the far side
+      aside.cx = out * (PAN_HALF - 8 - aside.size / 2);
+      aside.cy = -weightTop - 4 - aside.size / 2;
+    }
+    var floats = row.filter(function (p) { return p.shape === "x-balloon" || p.shape === "balloon"; });
+    var rowFloatTop = floats.reduce(function (t, p) { return Math.max(t, STRING + 6 + p.size); }, 0);
+    if (aside && aside.shape === "balloon") {          // too wide: the constant floats at the far side, above the others
+      aside.cx = out * (PAN_HALF - aside.size / 2);
+      aside.above = Math.max(weightTop + 8, rowFloatTop + 8);
+      floats.push(aside);
+    }
+    var maxRise = maxRiseFor();
+    floats.forEach(function (p, i) {
+      var base = p.above || 0;
+      var string = Math.max(12, Math.min(STRING, maxRise - base - 6 - p.size));
+      p.stringTop = -(base + string);
+      p.cy = p.stringTop - p.size / 2 - 6;
+      p.layer = floats.length === 1 ? "front" : (i % 2 === 0 ? "back" : "front");
+    });
+    var weights = ps.weights.slice();
+    return { weights: weights, floats: floats, weightTop: weightTop, centred: !aside };
+  }
+
+  /* Fallback for very crowded pans: weights in rows, balloons spread across the rim at two heights. */
+  function layoutCrowded(ps, where) {
     var maxW = 2 * PAN_HALF - 8, rows = [], row = null;
     ps.weights.forEach(function (p, i) {
       var gap = i === 0 ? 0 : (ps.weights[i - 1].group === p.group ? GAP_IN_GROUP : GAP_BETWEEN);
@@ -136,32 +192,15 @@
       r.items.forEach(function (p, k) { px += r.gaps[k]; p.cx = px + p.size / 2; p.cy = y - p.size / 2; px += p.size; });
       y -= r.h + 4;
     });
-    var weightTop = rows.length ? -y - 4 : 0; // height of the stack of weights
-
-    // balloons: straight up from evenly spaced points on the rim; alternate string lengths and layers
-    // tether points: in the open part of the rim, outside the weights, when there is room; otherwise across the rim
-    var n = ps.floats.length, out = where === "left" ? -1 : 1;
-    var halfW = rows.length ? rows[0].w / 2 : 0, rimEnd = PAN_HALF - 22, open = rimEnd - halfW - 10;
-    var spots = [];
-    var need = ps.floats.reduce(function (t, p) { return t + p.size * 0.55; }, 0); // staggered heights let them overlap a little
-    if (n && open >= need) {
-      for (var j = 0; j < n; j++) spots.push(out * (rimEnd - (n === 1 ? 0 : open * j / (n - 1))));
-      if (n > 1) spots.reverse();
-    } else {
-      var span = 2 * PAN_HALF - 50;
-      for (var k2 = 0; k2 < n; k2++) spots.push(n === 1 ? 0 : -span / 2 + span * (k2 + 0.5) / n);
-    }
-    var maxRise = (PIVOT.y + HANG - BEAM_HALF * Math.sin(MAX_TILT * Math.PI / 180)) - TOP_MARGIN; // pan raised highest
+    var weightTop = rows.length ? -y - 4 : 0, n = ps.floats.length, span = 2 * PAN_HALF - 50, maxRise = maxRiseFor();
     ps.floats.forEach(function (p, i) {
-      p.cx = spots[i];
-      // room above the weights before the balloon's top would leave the drawing (with the pan at its highest)
-      var room = maxRise - weightTop - 8 - 6 - p.size;
-      var string = Math.max(12, Math.min(i % 2 === 0 ? 26 : 72, room));
-      p.stringTop = -(weightTop + 8 + string);   // where the string meets the balloon
-      p.cy = p.stringTop - p.size / 2 - 6;      // knot below the balloon
+      p.cx = n === 1 ? 0 : -span / 2 + span * (i + 0.5) / n;
+      var string = Math.max(12, Math.min(i % 2 === 0 ? 26 : 72, maxRise - weightTop - 14 - p.size));
+      p.stringTop = -(weightTop + 8 + string);
+      p.cy = p.stringTop - p.size / 2 - 6;
       p.layer = n === 1 ? "front" : (i % 2 === 0 ? "back" : "front");
     });
-    return { weights: ps.weights, floats: ps.floats, weightTop: weightTop };
+    return { weights: ps.weights, floats: ps.floats, weightTop: weightTop, centred: false };
   }
 
   /* ---------- drawing ---------- */
@@ -381,7 +420,7 @@
   BON.createBalance = createBalance;
   BON.balanceGeometry = {
     sizeOf: sizeOf, tiltFor: tiltFor, abcd: abcd, layoutSide: layoutSide, exprPieces: exprPieces,
-    S1: S1, FLOOR: FLOOR, UNKNOWN_SIDE: UNKNOWN_SIDE, PAN_HALF: PAN_HALF, MIN_TILT: MIN_TILT, MAX_TILT: MAX_TILT, NEVER_SHARE: NEVER_SHARE,
+    S1: S1, FLOOR: FLOOR, UNKNOWN_SIDE: UNKNOWN_SIDE, PAN_HALF: PAN_HALF, TILT_POWER: TILT_POWER, MAX_TILT: MAX_TILT, NEVER_SHARE: NEVER_SHARE,
     VB_W: VB_W, VB_H: VB_H, PIVOT: PIVOT, HANG: HANG, BEAM_HALF: BEAM_HALF, TOP_MARGIN: TOP_MARGIN
   };
 })(typeof window !== "undefined" ? window : globalThis);
