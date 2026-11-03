@@ -1,4 +1,4 @@
-# SPEC (v2): "What Makes It Balance?" — Number-of-Solutions Balance Activity
+# SPEC (v2.1): "What Makes It Balance?" — Number-of-Solutions Balance Activity
 
 Standalone student web page for a Math 8 / Algebra 1 lesson on equations with one, no, or infinitely many solutions. It follows lessons on solving equations with variables on both sides. It replaces the Desmos activity and runs alongside two paper sheets (a solving sheet and a reflection page). Destination: its own page in a GitHub repo, deployed via GitHub Pages. No backend, no accounts, no data collection.
 
@@ -10,13 +10,21 @@ Audience: middle schoolers. The teacher walks the whole class through the first 
 
 - **Renamed** to "What Makes It Balance?" (page title, headers, paper sheets).
 - **Equation #3 is flipped** to `x + 5 = 4x + 1` (see section 2).
-- **Per-guess questions are removed** (no "which side is heavier?" prompt, no typed difference, no Difference column). The page shows the result instead: an arrow toward the heavier side, markers on the number line, and the guess cards.
+- **Per-guess questions are removed** (no "which side is heavier?" prompt, no typed difference, no Difference column). The page shows the result instead: markers on the number line and a guess table (see v2.1).
 - **The beam moves live** as the slider travels to a guessed value (no more "level until answered").
-- **New screen layout** (section 5): equation and x controls at the top, smaller balance, guess cards beneath it, one instruction bar.
+- **New screen layout** (section 5; superseded by the v2.1 three-column layout).
 - **Number-line slider** with ticks, separate typed-guess box, and a live x-box beside it.
 - **New step flow** (section 6): Guess → Predict → Slide → Solve (stop screen) → Answer. The old sort step and the old `a = b` entry are replaced by the final two-part question.
 - **Active-step highlighting** and a one-time coach-mark walkthrough on equation 1.
 - **Two-stage reveal** with worked solution steps and a wait timer after a second wrong answer.
+
+### v2.1 changes (after the Stage A playtest)
+- **New three-column layout** (section 5): x input and a growing x-box on the left, the equation centered above the balance in the middle, a prompt panel and a stacked guess **table** on the right, the number line and slider along the bottom.
+- **The guess cards and mini beams are replaced by a table** (x, left value, right value, "heavier by"). The page computes and shows the difference; the student never types one.
+- **The heavier-side label under the equation is removed.** The result lives in the table and in the number-line markers.
+- **The substitution lines are removed** (`3(5) + 2 = 17`). Each pan shows only its expression and total.
+- **The number line labels every integer** when there is room.
+- **Prompts move out of the bottom banner** into a prompt panel, plus small anchored callouts for step cues.
 
 ## 1. Teaching goal
 
@@ -82,7 +90,7 @@ Typed guesses must fall within the equation's `sliderRange`. Outside it, show: "
 
 ## 4. The balance visual
 
-A classic pan balance: a central post, a beam that tilts, and a pan hanging from each end. Make the balance **smaller** than in the current build so the guess cards fit beneath it.
+A classic pan balance: a central post, a beam that tilts, and a pan hanging from each end. Make the balance smaller than in v1 so it shares the center column with the equation.
 
 **Weights (positive terms):**
 - Each x-term of coefficient k renders as k separate boxes, each showing the substituted value of x. The pan shows the structure of the equation as written (split terms render as separate groups). Do not simplify for the student.
@@ -98,7 +106,9 @@ A classic pan balance: a central post, a beam that tilts, and a pan hanging from
 
 **Colors:** x-terms and x-boxes are blue (box outline blue). Positive constants green, negative red, **only where they label a pan object**. In the big equation at the top, constants stay **black** (matching the paper); x-terms are blue.
 
-**Expression under each pan:** beneath each pan, show that side's algebraic expression in the matching colors, for example `2x + 5` with `2x` in blue and `+ 5` in green, or `3x − 2` with `3x` in blue and `− 2` in red. The expression slides up and down with its pan but stays horizontal (translate only, no rotation). The substitution line (`3(5) + 2 = 17`, negatives parenthesized) stays fixed beneath it so it is readable while the slider moves.
+**Expression and total under each pan:** beneath each pan, show that side's algebraic expression in the matching colors, for example `2x + 5` with `2x` in blue and `+ 5` in green, or `3x − 2` with `3x` in blue and `− 2` in red. Below the expression, show that side's single total value in a clear box. Do **not** show the substitution line (`3(5) + 2 = 17`); the total alone is enough. The expression and total slide up and down with their pan but stay horizontal (translate only, no rotation).
+
+**x-box and pan boxes share a scale:** the x-box in the left column and the boxes on the pans use the same size scale and the same blue outline, so students see that the pan boxes are the x value. When the value changes, the pan boxes may pulse briefly. If a crowded pan has to shrink its boxes, that is allowed, but the left x-box keeps the true scale.
 
 **Tilt:**
 - The side with the greater value (more positive) is "heavier" and goes down.
@@ -106,32 +116,34 @@ A classic pan balance: a central post, a beam that tilts, and a pan hanging from
 - **Scale per equation** so the largest difference across the slider range reaches the cap. Then a flatter beam reliably means a closer guess. For never-balanced equations, hold a constant, clearly visible tilt (about 60% of the cap) across the whole range.
 - Short easing (about 0.07 s while dragging; slightly longer for travel animation).
 
-**Arrow:** whenever a value has landed (typed guess arrival, slider release, arrow-key nudge), show a bold arrow at the equation's "=" sign pointing toward the heavier side (◀ left heavier, ▶ right heavier). Balanced shows a ✓ on the "=". The arrow must also carry text ("left heavier") for screen readers; do not rely on color.
+**Heavier-side result:** do not put a label or arrow under or beside the equation. The heavier side is shown by the beam tilt, by the number-line marker (◀ / ▶ / ✓), and by the "Heavier" column of the guess table. Each carries text, not color alone.
 
 ## 5. Screen layout
 
 ```
- What Makes It Balance?   [Guess ▸ Predict ▸ Slide ▸ Solve ▸ Answer]   Sorted: 1 · 0 · 0
- ┌───────────────────────────────┬───────────────────────────────┐
- │ 2x + 3 = x + 7  (big, left)   │ x = [ 5 ]  [x box]            │
- │                               │ ├┼┼┼┼┼ 0 ┼┼┼┼┼┤ number line    │
- ├───────────────────────────────┴───────────────────────────────┤
- │ balance (smaller), expression under each pan, totals          │
- ├───────────────────────────────────────────────────────────────┤
- │ guess cards: [x box] [17 | 12] [mini beam] ... (5 across)     │
- ├───────────────────────────────────────────────────────────────┤
- │ instruction for the current step                              │
- └───────────────────────────────────────────────────────────────┘
+ What Makes It Balance?   [Guess ▸ Predict ▸ Slide ▸ Solve ▸ Answer]    Sorted: 1 · 0 · 0
+ ┌──────────────┬──────────────────────────────┬──────────────────────────┐
+ │ x = [ 5 ] Go │      2x + 3  =  x + 7        │ PROMPT PANEL             │
+ │              │   (centered above balance)   │ (current question,       │
+ │   ┌────┐     │                              │  buttons, worked steps)  │
+ │   │ 5  │     │        the balance           ├──────────────────────────┤
+ │   └────┘     │   2x + 3 [13]  x + 7 [12]    │ GUESS TABLE (stacked)    │
+ │  (x box,     │                              │ # │ x │ L │ R │ heavier  │
+ │   grows)     │                              │ 1 │ 1 │ 5 │ 8 │ R by 3   │
+ ├──────────────┴──────────────────────────────┴──────────────────────────┤
+ │ number line: −10 −9 … −1 0 1 … 9 10, slider thumb, ◀ ▶ ✓ guess markers │
+ └─────────────────────────────────────────────────────────────────────────┘
 ```
 
-- **Equation:** large, left-aligned above the balance.
-- **x controls** sit to the right of the equation, color-coded blue to match the equation's x-terms: a "x =" text box, then the number-line slider, then a small x-box next to the slider that shows the current value (labeled "x" above it) and resizes live (same sizing rules as the pan boxes).
-- **Guess box vs current x:** the typed-guess input is separate from the "current x" readout above the slider. When a student enters a guess, the slider thumb **animates** from its current position to that value (balance, boxes, totals update along the way; cap the travel at about 1 s even for long jumps), then turns green on arrival.
-- **Number line:** −10 to 10, zero in the middle, tick marks at every integer, labels at −10, −5, 0, 5, 10. Drag is continuous (0.01); ticks are visual only. Keep arrow-key nudging. Under `prefers-reduced-motion` the thumb jumps.
-- **Guess markers on the number line:** each past guess leaves a small marker at its x: ◀ left heavier, ▶ right heavier, ✓ balanced (shape plus text, not color alone). For a one-solution equation the solution sits in the gap between the nearest opposite markers. For never equations all markers point the same way. For always equations all are ✓. Do not shade or label the gap.
-- **Guess cards** (beneath the balance, laid out horizontally, up to 5 across): a picture of the x-box with the guessed value inside ("x =" and the box), the two side totals ("17 | 12"), and a small tilted-beam icon showing the result. Given guesses are marked "given." The slider never adds cards.
-- **Instruction bar:** one short sentence for the current step. Cut any text that repeats it.
-- **Sort count bar:** compact, top right, expands to show sorted equations.
+- **Left column:** the "x =" typed-guess box (with a Go/Enter button) and, directly beneath it, the x-box. The x-box shows the current value (labeled "x"), grows and shrinks as the value changes, and follows the slider live. It sits left of the balance so students connect it to the boxes on the pans.
+- **Center:** the equation, large and centered above the balance. Then the balance, with the expression and total under each pan (section 4). No heavier-side label under the equation.
+- **Right column, top: prompt panel.** All questions, buttons, notes, and worked steps appear here (Predict, the Solve stop screen, the Answer question, hints, the second-value note, the reveal and countdown). It grows when it needs to (for example when showing worked steps) and the table shrinks to fit; the table never scrolls (it holds at most 5 rows in Parts 1–2).
+- **Right column, below: guess table.** Stacked vertically, one row per guess, chronological, numbered. Columns: **#**, **x**, **Left**, **Right**, **Heavier**. The page computes the last column; the student never enters it. Examples: `◀ Left heavier by 3`, `Right heavier by 2 ▶`, `✓ Balanced`. Values show exactly as typed (fractions stay fractions). Given guesses are marked "given." The slider never adds rows.
+- **Bottom: number line.** −10 to 10, zero in the center, tick marks at every integer, **a label at every integer** when the line is wide enough to show them without crowding (if not, label every 2). Slider thumb on the line. Drag is continuous (0.01); ticks are visual only. Arrow-key nudging stays. Under `prefers-reduced-motion` the thumb jumps.
+- **Guess markers on the number line:** each past guess leaves a marker at its x: ◀ left heavier, ▶ right heavier, ✓ balanced (shape and text, not color alone). For a one-solution equation the solution sits in the gap between the nearest opposite markers. For never equations all markers point the same way. For always equations all are ✓. Do not shade or label the gap.
+- **Guess box vs current x:** the typed-guess input is separate from the slider's current value. When a student enters a guess, the slider thumb **animates** from its current position to that value (balance, boxes, totals, and the left x-box update along the way; cap the travel at about 1 s), then turns green on arrival.
+- **Anchored callouts:** short step cues ("Type a value for x") appear as small, non-blocking callouts with a pointer to the control that is lit. They disappear when the student acts and never cover the balance. Questions and anything that needs a decision live in the prompt panel, not in popups.
+- **Step strip** at the top and a compact **sort count bar** at top right (expands to show sorted equations).
 - No ± button. x entry is a plain text input (not type=number); students type a leading "-" themselves. Accept integers, decimals, and fractions. Typing just "-" shows "Keep typing: that isn't a number yet."
 
 ## 6. Per-equation flow (Parts 1 and 2: #1–10)
@@ -139,9 +151,9 @@ A classic pan balance: a central post, a beam that tilts, and a pan hanging from
 Step strip at the top shows: **Guess ▸ Predict ▸ Slide ▸ Solve ▸ Answer**, with the current step highlighted.
 
 ### Step 1 — Guess (5 guesses)
-- On #1–3, the first two guesses are given: the slider travels to each, the beam moves, the arrow appears, and a guess card is added. A button advances from the first given guess to the second. Then the student makes guesses 3–5 by typing.
+- On #1–3, the first two guesses are given: the slider travels to each, the beam moves, the number-line marker appears, and a row is added to the guess table. A button advances from the first given guess to the second. Then the student makes guesses 3–5 by typing.
 - On #4 and up, all five guesses are the student's own.
-- **No per-guess questions.** The student types an x, the slider travels, the arrow and card appear, and they pick the next x.
+- **No per-guess questions.** The student types an x, the slider travels, the marker and table row appear, and they pick the next x.
 - A repeated x is refused ("You already tried that one").
 - **Second-value note:** the first time a guess balances on an equation, show "That balances. Can you find a different value that also balances?" Show it once and keep it visible for that equation's remaining guesses. Do not reveal whether another value exists.
 
@@ -176,10 +188,10 @@ Then show: "Write this equation in the matching column on your reflection page."
 **Correct Part 1 on the first or second try:** show the worked steps as "Compare with your work" with Next available immediately. No wait.
 
 ### Spotlight rule (applies to every step)
-Whatever the student is working on is lit; everything else dims (reduced opacity, still visible, not hidden). The balance stays lit whenever x is involved. Guess: x input, number line, balance, equation, cards. Predict: prediction buttons plus the number-line markers and cards. Slide: slider, number line, balance. Solve: stop panel only. Answer: final question plus the equation. The step strip always shows the current step, so dimming is never the only cue.
+Whatever the student is working on is lit; everything else dims (reduced opacity, still visible, not hidden). The balance stays lit whenever x is involved. Guess: x input, x-box, balance, equation, number line, guess table. Predict: the prompt panel (prediction buttons), the guess table, and the number-line markers. Slide: number line and slider, balance, x-box. Solve: prompt panel only. Answer: prompt panel plus the equation. The step strip always shows the current step, so dimming is never the only cue.
 
 ### Coach marks (equation 1 only, replayable with a "?" button)
-A short sequence of callouts, each spotlighting one element: the equation, the x box ("this box is x"), the pans, a green circle ("a +3 ball"), the number line and slider, and the guess cards. Keep each to one sentence.
+A short sequence of callouts, each spotlighting one element: the equation, the x box ("this box is x"), the pans, a green circle ("a +3 ball"), the number line and slider, and the guess table. Keep each to one sentence.
 
 ## 7. Highlighting of x-terms and constants
 
@@ -209,7 +221,7 @@ Equation numbers and display strings must match the paper exactly.
 
 ## 10. Navigation and state
 
-- Self-paced. A Back button revisits earlier equations without losing guess cards, prediction, or sort.
+- Self-paced. A Back button revisits earlier equations without losing the guess table, prediction, or sort.
 - Teacher walkthrough: works on a projector. Keyboard shortcuts for next/back; large type.
 - State persists in `localStorage` (guesses, predictions, sorts, answers, attempts) so a refresh doesn't lose progress, with a "Start over" button. Wrap all reads and writes in try/catch.
 
@@ -247,12 +259,15 @@ Controls for Ax + B = Cx + D. Keep values small: A, C in 0–9, B, D in −9 to 
 - #2 at x = −3: both sides equal −7; the left shows floating boxes, the right a balloon (−4) and a floating box.
 - #4, #5, #8: the beam never goes level at any slider position; markers all point the same way.
 - #6, #7, #10: level at every position, including 0 and negatives; markers all ✓.
-- Typing a guess moves the slider thumb to it, turns it green on arrival, and updates the beam along the way.
+- Typing a guess moves the slider thumb to it, turns it green on arrival, and updates the beam and the left x-box along the way.
+- The left x-box and the pan boxes show the same value at the same scale; the table "Heavier" column is page-computed and correct for negative and fractional x.
+- No substitution line anywhere; each pan shows only its expression and total.
 - Typed x outside the range is refused with a gentle message.
-- The pan expressions slide with the pans and stay horizontal.
+- The pan expressions and totals slide with the pans and stay horizontal.
+- The number line labels every integer at 1366 wide without overlap.
 - Final question: `x = 4`, `4 = x`, `4/3`, `8/6`, `0.5`, "No value", "Any value" behave as specified; `1.33` triggers the improper-fraction hint without using an attempt.
 - Two-stage reveal: first wrong → retry; second wrong → steps and countdown; early Next → inline message; correct → steps with no wait.
-- Nothing scrolls at 1366×650 in the busiest moments (second-value note showing, steps showing with countdown, completion screen).
+- Nothing scrolls at 1366×650 in the busiest moments (second-value note showing, steps showing with countdown, five table rows, completion screen). The prompt panel and table share the right column without overlap.
 - No float artifacts in any readout.
 
 ## 16. Worked solution steps (wording pending teacher review)

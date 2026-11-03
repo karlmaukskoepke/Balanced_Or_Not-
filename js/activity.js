@@ -1,10 +1,12 @@
 /*
  * What Makes It Balance? — the student page (spec v2).
- * Stage A: the screen and the Guess step. Predict, Slide, Solve and Answer come in Stage B.
+ * Stage A (v2.1 layout): the screen and the Guess step. Predict, Slide, Solve and Answer come in Stage B.
  *
- * Guess step: the student types x; the slider thumb travels there (balance, boxes, totals update on the way),
- * turns green on arrival, an arrow at the "=" points to the heavier side, a marker goes on the number line
- * and a guess card is added. Equations 1-3 start with two given guesses. No questions per guess.
+ * Layout: x box and a growing x-box (left), the equation above the balance (center), the prompt panel and the
+ * guess table (right), the number line along the bottom.
+ * Guess step: the student types x; the slider thumb travels there (balance, boxes, totals and the x-box update
+ * on the way), turns green on arrival, a marker goes on the number line and a row goes in the table.
+ * Equations 1-3 start with two given guesses. No questions per guess.
  *
  * Address options (for the teacher):  ?eq=4  open equation 4 (if unlocked) · ?all=1 unlock every equation ·
  * ?reset=1 clear this browser's saved progress first.
@@ -76,7 +78,6 @@
     view.update({ eq: eq, x: cur.x, style: cur.style, tilt: "live" });
     slider.value = String(Math.round(cur.pos * 100) / 100);
     drawXBox(cur.x, cur.style);
-    drawArrow(eq);
   }
 
   /* Move the thumb to x (animated, at most about 1 s), updating the balance on the way; then land. */
@@ -90,6 +91,8 @@
       cur.x = x; cur.style = style; cur.pos = to; cur.landed = true;
       showX(eq);
       slider.classList.add("is-arrived");
+      var c = M.compare(eq, x);
+      $("result-sr").textContent = "x = " + E.fmtValue(x, style) + ": " + heavierText(c, style) + ".";
       if (onLand) onLand();
     };
     if (reducedMotion() || Math.abs(to - from) < 0.005) { finish(); return; }
@@ -109,33 +112,19 @@
     travel.id = requestAnimationFrame(stepFn);
   }
 
-  /* ---------- the arrow at "=" ---------- */
-
-  function drawArrow(eq) {
-    var a = document.getElementById("eq-arrow");
-    if (!a) return;
-    var sr = $("arrow-sr");
-    if (!cur.landed || !cur.x) { a.hidden = true; a.removeAttribute("data-heavier"); sr.textContent = ""; return; }
-    var c = M.compare(eq, cur.x);
-    var glyph = c.heavier === "left" ? "◀" : c.heavier === "right" ? "▶" : "✓";
-    var words = c.heavier === "left" ? "left heavier" : c.heavier === "right" ? "right heavier" : "balanced";
-    a.hidden = false;
-    a.setAttribute("data-heavier", c.heavier);
-    a.innerHTML = "<span class=\"eq-arrow-glyph\" aria-hidden=\"true\">" + glyph + "</span><span class=\"eq-arrow-text\">" + words + "</span>";
-    sr.textContent = "x = " + E.fmtValue(cur.x, cur.style) + ": " + words + ".";
-  }
-
-  /* ---------- the x-box beside the slider (resizes like the pan boxes) ---------- */
+  /* ---------- the x-box (left column): the same scale and outline as the boxes on the pans ---------- */
 
   function drawXBox(x, style) {
-    var box = $("xbox");
-    if (!x) { box.textContent = "x"; box.className = "xbox is-unknown"; box.style.width = box.style.height = ""; return; }
-    var v = Math.abs(posOf(x)), side = Math.max(38, Math.min(52, 20 * Math.sqrt(v)));
+    var box = $("xbox"), BG = BON.balanceGeometry;
+    var px = view.unitPx() || 0.6;
+    var side = BG.trueSide(x) * px;
+    box.style.width = box.style.height = side.toFixed(1) + "px";
+    if (!x) { box.textContent = "x"; box.className = "xbox is-unknown"; box.style.fontSize = ""; return; }
     var s = E.fSign(x);
     box.className = "xbox" + (s === 0 ? " is-zero" : s < 0 ? " is-negative" : "");
-    box.style.width = box.style.height = side.toFixed(1) + "px";
     box.textContent = E.fmtValue(x, style);
-    box.style.fontSize = (box.textContent.length > 4 ? 0.8 : 1) + "rem";
+    var len = box.textContent.length;
+    box.style.fontSize = Math.max(15, Math.min(side * 0.42, (side - 8) / (len * 0.58))).toFixed(1) + "px";
   }
 
   /* ---------- the number line: ticks, labels, guess markers ---------- */
@@ -144,13 +133,17 @@
     var lo = eq.sliderRange[0], hi = eq.sliderRange[1], f = (v - lo) / (hi - lo);
     return "calc(var(--thumb) / 2 + (100% - var(--thumb)) * " + f.toFixed(5) + ")";
   }
+  /* A label at every integer when there is room (about 34 px per step); otherwise every 2. */
   function drawTicks(eq) {
     var ticks = $("nl-ticks"), lo = eq.sliderRange[0], hi = eq.sliderRange[1];
+    var perUnit = ($("nl").clientWidth - 26) / (hi - lo);
+    var every = perUnit >= 34 ? 1 : 2;
+    ticks.setAttribute("data-label-every", every);
     ticks.textContent = "";
     for (var v = lo; v <= hi; v++) {
       var t = document.createElement("span");
-      var major = v % 5 === 0;
-      t.className = "nl-tick" + (major ? " is-major" : "") + (v === 0 ? " is-zero" : "");
+      var major = v % every === 0;
+      t.className = "nl-tick" + (v % 5 === 0 ? " is-major" : "") + (v === 0 ? " is-zero" : "");
       t.style.left = nlLeft(eq, v);
       ticks.appendChild(t);
       if (major) {
@@ -191,34 +184,39 @@
     nl.style.setProperty("--marker-rows", Math.max(1, rows.length));
   }
 
-  /* ---------- guess cards ---------- */
+  /* ---------- the guess table (the page works out the Heavier column) ---------- */
 
-  function drawCards(eq, r) {
-    var box = $("cards");
-    box.textContent = "";
-    box.hidden = eq.part === 3;
+  function heavierText(c, style) {
+    if (c.heavier === "balanced") return "Balanced";
+    return (c.heavier === "left" ? "Left" : "Right") + " heavier by " + E.fmtValue(c.diff, style);
+  }
+  function drawTable(eq, r) {
+    var body = $("guess-rows");
+    body.textContent = "";
+    $("table-box").hidden = eq.part === 3;
     for (var i = 0; i < F.GUESSES; i++) {
-      var g = r.guesses[i], card = document.createElement("div");
+      var g = r.guesses[i], tr = document.createElement("tr");
+      var th = document.createElement("th");
+      th.scope = "row";
+      th.textContent = i + 1;
+      tr.appendChild(th);
       if (!g) {
-        card.className = "card-guess is-empty";
-        card.innerHTML = "<span class=\"card-num\">" + (i + 1) + "</span>";
-        box.appendChild(card);
-        continue;
+        tr.className = "is-empty";
+        for (var k = 0; k < 4; k++) tr.appendChild(document.createElement("td"));
+      } else {
+        if (g.given) { var tag = document.createElement("span"); tag.className = "given"; tag.textContent = "given"; th.appendChild(tag); }
+        var c = M.compare(eq, g.x);
+        [E.fmtValue(g.x, g.style), E.fmtValue(c.left, g.style), E.fmtValue(c.right, g.style)].forEach(function (t) {
+          var td = document.createElement("td"); td.textContent = t; tr.appendChild(td);
+        });
+        var h = document.createElement("td");
+        h.className = "heavier is-" + c.heavier;
+        var glyph = c.heavier === "left" ? "\u25C0 " : c.heavier === "balanced" ? "\u2713 " : "";
+        h.textContent = glyph + heavierText(c, g.style) + (c.heavier === "right" ? " \u25B6" : "");
+        tr.appendChild(h);
+        tr.setAttribute("data-heavier", c.heavier);
       }
-      card.className = "card-guess";
-      var c = M.compare(eq, g.x);
-      var s = E.fSign(g.x);
-      card.innerHTML =
-        "<span class=\"card-num\">" + (i + 1) + (g.given ? "<span class=\"given\">given</span>" : "") + "</span>" +
-        "<span class=\"card-x\"><span class=\"eqn-x\">x</span> = <span class=\"card-box" + (s === 0 ? " is-zero" : s < 0 ? " is-negative" : "") +
-        "\">" + E.fmtValue(g.x, g.style) + "</span></span>" +
-        "<span class=\"card-totals\"><span>" + E.fmtValue(c.left, g.style) + "</span><span class=\"card-bar\" aria-hidden=\"true\">|</span><span>" +
-        E.fmtValue(c.right, g.style) + "</span></span>" +
-        "<svg class=\"card-beam\" aria-hidden=\"true\"></svg>" +
-        "<span class=\"sr-only\">" + (c.heavier === "balanced" ? "balanced" : c.heavier + " heavier") + "</span>";
-      BON.miniBeam(card.querySelector(".card-beam"), eq, g.x);
-      card.setAttribute("data-heavier", c.heavier);
-      box.appendChild(card);
+      body.appendChild(tr);
     }
   }
 
@@ -263,13 +261,20 @@
     if (!$("sortbar-panel").hidden && !e.target.closest(".sortbar")) toggleSortPanel(false);
   });
 
-  /* ---------- the instruction bar ---------- */
+  /* ---------- the prompt panel (right column, top) and the short cue by the x box ---------- */
 
-  function drawInstruction(eq, r) {
-    var bar = $("instruction"), st = step(eq, r);
+  function showCue(text) {
+    var cue = $("cue");
+    cue.textContent = text || "";
+    cue.hidden = !text;
+  }
+
+  function drawPrompt(eq, r) {
+    var bar = $("prompt"), st = step(eq, r);
     bar.textContent = "";
+    showCue("");
     var p = document.createElement("p");
-    p.className = "instruction-text";
+    p.className = "prompt-q";
     bar.appendChild(p);
     var focusTarget = null;
     if (st === "part3") {
@@ -288,12 +293,13 @@
           focusTarget = b;
         }
       } else {
-        p.textContent = "Guess " + (n + 1) + " of " + F.GUESSES + ": type a value for x.";
+        p.textContent = "Guess " + (n + 1) + " of " + F.GUESSES + ".";
+        if (!input.value) showCue("Type a value for x");
         focusTarget = input;
       }
       if (r.note) {
         var note = document.createElement("p");
-        note.className = "instruction-note";
+        note.className = "prompt-note";
         note.textContent = T.secondValue;
         bar.appendChild(note);
       }
@@ -336,6 +342,7 @@
     addGuess(eq, r, res.value, res.style, false);
   });
   input.addEventListener("input", function () {
+    showCue("");
     var p = E.parseNumber(input.value);
     $("x-msg").textContent = !p.ok && p.partial && input.value.trim() !== "" ? T.notNumberYet : "";
   });
@@ -377,8 +384,8 @@
       text: "The pans hold the two sides: a box for each x, a ball for each number." },
     { target: function () { return document.querySelector(".bon-pan [data-shape=weight] circle"); },
       text: function (el) { return "A green " + el.parentNode.getAttribute("data-label") + " ball adds that much weight to its pan."; } },
-    { target: function () { return $("nl"); }, text: "Type a guess for x and the slider travels to it on this number line." },
-    { target: function () { return $("cards"); }, text: "Each guess leaves a card: the two sides and which way the beam tipped." }
+    { target: function () { return $("nl"); }, text: "When you type a guess, the slider travels to it on this number line." },
+    { target: function () { return $("table-box"); }, text: "Each guess goes in this table, with the two sides and which side is heavier." }
   ];
   var coachAt = -1, coachReturn = null;
 
@@ -393,7 +400,7 @@
     coachAt = -1;
     state.coachSeen = true; save();
     var eq = EQS[state.current];
-    var f = drawInstruction(eq, rec(eq));
+    var f = drawPrompt(eq, rec(eq));
     (f && !f.disabled ? f : coachReturn && coachReturn.focus ? coachReturn : input).focus();
   }
   function coachNext() {
@@ -441,10 +448,6 @@
 
     $("eq-number").textContent = eq.id;
     BON.renderEquation($("eq-display"), eq, { emphasis: eq.part === 2 });
-    var eqSign = $("eq-display").querySelector(".eqn-eq");
-    var arrow = document.createElement("span");
-    arrow.className = "eq-arrow"; arrow.id = "eq-arrow"; arrow.hidden = true;
-    eqSign.appendChild(arrow);
 
     $("progress").textContent = eq.id + " of " + EQS.length;
     $("progress").setAttribute("aria-label", "Equation " + eq.id + " of " + EQS.length);
@@ -453,7 +456,7 @@
 
     if (newEq) drawTicks(eq);
     drawMarkers(eq, r);
-    drawCards(eq, r);
+    drawTable(eq, r);
     drawSortBar();
 
     // the current x: the last guess, landed (unless a guess was just made, which already set it)
@@ -472,7 +475,7 @@
     $("slider-lock").hidden = !slider.disabled || eq.part === 3;
     $("x-area").classList.toggle("is-part3", st === "part3");
 
-    var focusTarget = drawInstruction(eq, r);
+    var focusTarget = drawPrompt(eq, r);
     if (how.focus && focusTarget && !focusTarget.disabled && $("coach").hidden) focusTarget.focus();
 
     // equations 1-3: the first given guess plays as soon as the equation opens
@@ -481,7 +484,10 @@
     }
   }
 
-  window.addEventListener("resize", function () { var eq = EQS[state.current]; drawMarkers(eq, rec(eq)); });
+  window.addEventListener("resize", function () {
+    var eq = EQS[state.current];
+    drawTicks(eq); drawMarkers(eq, rec(eq)); drawXBox(cur.x, cur.style);
+  });
 
   render();
 })();

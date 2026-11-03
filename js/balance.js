@@ -13,9 +13,10 @@
  * - Floating pieces hover beside the OUTER edge of their pan (tethered to the pan end), so they never
  *   reach the beam and the balance can be short and wide.
  * - Both pans share one size scale.
- * - Under each pan: the side's expression in colour (x-terms blue, + numbers green, − numbers red),
- *   moving up and down with the pan but never rotating. Below that, fixed in place, the substitution
- *   line ("3(5) + 2 = 17").
+ * - Under each pan: the side's expression in colour (x-terms blue, + numbers green, − numbers red)
+ *   and below it the side's total in a box, both moving up and down with the pan but never rotating.
+ *   (No substitution line, spec v2.1.)
+ * - trueSide(x) / unitPx() let the page draw the x-box beside the balance at the same scale as the pan boxes.
  * - Tilt is scaled per equation: the largest difference over the slider range reaches the cap, any
  *   nonzero difference shows at least MIN_TILT, never-balanced equations hold 60% of the cap.
  * Sizes and angles are drawing-only numbers; every value shown as text comes from exact fractions.
@@ -26,20 +27,20 @@
   var NS = "http://www.w3.org/2000/svg";
 
   // Geometry (SVG user units; viewBox is 0 0 VB_W VB_H)
-  var VB_W = 1300, VB_H = 470;
-  var PIVOT = { x: 650, y: 92 };
-  var BEAM_HALF = 250;        // pivot to the point a pan hangs from
+  var VB_W = 1000, VB_H = 470;
+  var PIVOT = { x: 500, y: 86 };
+  var BEAM_HALF = 200;        // pivot to the point a pan hangs from
   var HANG = 190;             // beam end down to the top of the pan
-  var PAN_HALF = 150;
-  var WEIGHT_BAND = { w: 280, h: 150 };                         // on the pan, growing upward
-  var FLOAT_ZONE = { inner: PAN_HALF + 14, w: 224, top: -152, h: 150 }; // beside the pan's outer edge
+  var PAN_HALF = 130;
+  var WEIGHT_BAND = { w: 244, h: 150 };                         // on the pan, growing upward
+  var FLOAT_ZONE = { inner: PAN_HALF + 12, w: 152, top: -152, h: 150 }; // beside the pan's outer edge
   var MIN_TILT = 4, MAX_TILT = 18, NEVER_SHARE = 0.6;
   var UNIT_SIDE = 46;         // side of a box worth 1 at full scale
   var FLOOR_SIDE = 70;        // smallest box side (fits a label like "−1.33")
   var FLOOR_R = 36;           // smallest circle/balloon radius
   var GAP_IN_TERM = 6, GAP_BETWEEN_TERMS = 18, ROW_GAP = 8;
   var FOLLOW_MS = 70;         // the beam closes most of the gap to its target in about this time
-  var EXPR_DY = 50, SUB_Y = 456, TEXT_ROOM = { left: [8, 560], right: [740, 1292] };
+  var EXPR_DY = 58, TOTAL_TOP = 68, TOTAL_H = 52;
 
   var COLORS = {
     blue: "#1F5FBF", boxFill: "#E4ECFA", zeroFill: "#EDEDED", zeroHatch: "#C9C9C9",
@@ -159,9 +160,10 @@
     var sides = { left: sideItems(eq.left, x, style), right: sideItems(eq.right, x, style) };
     // shrink everything together; if even floor-size pieces don't fit (many floating boxes), shrink the floor a little
     var f = 1, floorK = 1, result, ok = false;
-    for (var tries = 0; tries < 120 && !ok; tries++) {
-      if (tries === 60) { f = 1; floorK = 0.86; }
-      if (tries === 90) { f = 1; floorK = 0.74; }
+    for (var tries = 0; tries < 130 && !ok; tries++) {
+      if (tries === 50) floorK = 0.86;   // f keeps shrinking: the natural sizes were already too big
+      if (tries === 75) floorK = 0.72;
+      if (tries === 100) floorK = 0.6;
       ok = true;
       result = {};
       ["left", "right"].forEach(function (s) {
@@ -274,8 +276,8 @@
     el("line", { x1: 0, y1: 0, x2: 0, y2: 10, stroke: COLORS.zeroHatch, "stroke-width": 4 }, hatch);
 
     // Stand
-    el("path", { d: "M570,420 L730,420 L705,396 L595,396 Z", fill: COLORS.metal, "class": "bon-stand" }, svg);
-    el("rect", { x: PIVOT.x - 10, y: PIVOT.y, width: 20, height: 306, fill: COLORS.metal, "class": "bon-stand" }, svg);
+    el("path", { d: "M436,452 L564,452 L542,430 L458,430 Z", fill: COLORS.metal, "class": "bon-stand" }, svg);
+    el("rect", { x: PIVOT.x - 10, y: PIVOT.y, width: 20, height: 346, fill: COLORS.metal, "class": "bon-stand" }, svg);
     el("path", { d: "M" + PIVOT.x + "," + (PIVOT.y - 62) + " l-8,-14 l16,0 Z", fill: COLORS.metal }, svg);
 
     var pans = { left: el("g", { "class": "bon-pan", "data-side": "left" }, svg),
@@ -290,7 +292,6 @@
     el("circle", { cx: PIVOT.x + BEAM_HALF, cy: PIVOT.y, r: 6, fill: "#FFFFFF", stroke: COLORS.metal, "stroke-width": 3 }, beam);
     el("circle", { cx: PIVOT.x, cy: PIVOT.y, r: 13, fill: "#FFFFFF", stroke: COLORS.metal, "stroke-width": 5 }, svg);
 
-    var info = el("g", { "class": "bon-info" }, svg);
     var state = { angle: 0, target: 0, anim: null, last: null };
 
     function reducedMotion() {
@@ -330,7 +331,7 @@
       state.anim = root.requestAnimationFrame(step);
     }
 
-    function drawPan(g, side, data, terms) {
+    function drawPan(g, side, data, terms, total) {
       while (g.firstChild) g.removeChild(g.firstChild);
       el("line", { x1: 0, y1: -HANG, x2: -PAN_HALF + 6, y2: 0, stroke: COLORS.hanger, "stroke-width": 2.5 }, g);
       el("line", { x1: 0, y1: -HANG, x2: PAN_HALF - 6, y2: 0, stroke: COLORS.hanger, "stroke-width": 2.5 }, g);
@@ -345,16 +346,11 @@
         var ts = el("tspan", { fill: p.color }, ex);
         ts.textContent = p.text;
       });
-    }
-
-    /* The substitution line under a pan, fixed in place so it is readable while the beam moves. */
-    function drawSub(side, line) {
-      var room = TEXT_ROOM[side], cx = side === "left" ? PIVOT.x - BEAM_HALF : PIVOT.x + BEAM_HALF;
-      var size = 36, w = textWidth(line, size);
-      var attrs = { y: SUB_Y, "font-size": size, "class": "bon-sub", "data-sub": side };
-      if (w > room[1] - room[0]) { attrs.textLength = room[1] - room[0]; attrs.lengthAdjust = "spacingAndGlyphs"; w = room[1] - room[0]; }
-      attrs.x = Math.min(room[1] - w / 2, Math.max(room[0] + w / 2, cx));
-      el("text", attrs, info).textContent = line;
+      // the side's total, in a box, under the expression
+      var tw = Math.max(70, textWidth(total, 44) + 30);
+      var tg = el("g", { "class": "bon-total-box", "data-total": side }, g);
+      el("rect", { x: -tw / 2, y: TOTAL_TOP, width: tw, height: TOTAL_H, rx: 8, fill: "#FFFFFF", stroke: COLORS.ink, "stroke-width": 3 }, tg);
+      el("text", { x: 0, y: TOTAL_TOP + TOTAL_H / 2, "font-size": 44, "class": "bon-label bon-total-text" }, tg).textContent = total;
     }
 
     function update(opts) {
@@ -362,12 +358,8 @@
       var eq = opts.eq, x = opts.x || null, style = opts.style;
       var cmp = x ? M.compare(eq, x) : null;
       var lay = layout(eq, x, style);
-      drawPan(pans.left, "left", lay.left, eq.left);
-      drawPan(pans.right, "right", lay.right, eq.right);
-      while (info.firstChild) info.removeChild(info.firstChild);
-      ["left", "right"].forEach(function (side) {
-        drawSub(side, x ? M.substitutionLine(eq[side], x, style) : "");
-      });
+      drawPan(pans.left, "left", lay.left, eq.left, cmp ? E.fmtValue(cmp.left, style) : "?");
+      drawPan(pans.right, "right", lay.right, eq.right, cmp ? E.fmtValue(cmp.right, style) : "?");
       var target = !cmp || opts.tilt === "level" ? 0 : tiltFor(eq, cmp.signedDiff);
       title.textContent = !cmp ? "Balance with " + M.equationText(eq) + " on its pans. No value of x yet." :
         "Balance at x = " + E.fmtValue(x, style) + ". Left side " + E.fmtValue(cmp.left, style) + ", right side " +
@@ -380,25 +372,22 @@
     }
 
     place(0);
-    return { update: update, getAngle: function () { return state.angle; }, getLast: function () { return state.last; } };
+    /* Screen pixels per SVG unit (the drawing keeps its proportions inside the svg box). */
+    function unitPx() {
+      var r = svg.getBoundingClientRect();
+      return Math.min(r.width / VB_W, r.height / VB_H) || 0;
+    }
+    return { update: update, unitPx: unitPx, getAngle: function () { return state.angle; }, getLast: function () { return state.last; } };
   }
 
-  /* A tiny tilted-beam picture for guess cards (same tilt rule as the big balance). */
-  function miniBeam(svg, eq, x) {
-    svg.setAttribute("viewBox", "0 0 64 36");
-    while (svg.firstChild) svg.removeChild(svg.firstChild);
-    var c = BON.model.compare(eq, x), a = tiltFor(eq, c.signedDiff);
-    el("path", { d: "M26,34 L38,34 L32,18 Z", fill: COLORS.metal }, svg);
-    var g = el("g", { transform: "rotate(" + a.toFixed(2) + " 32 18)" }, svg);
-    el("rect", { x: 4, y: 15, width: 56, height: 6, rx: 3, fill: COLORS.metal }, g);
-    el("rect", { x: 1, y: 21, width: 14, height: 5, rx: 2, fill: COLORS.metal }, g);
-    el("rect", { x: 49, y: 21, width: 14, height: 5, rx: 2, fill: COLORS.metal }, g);
-    return c;
+  /* Side of an x-box at the true scale (SVG units): area ∝ |x|, never below the floor. */
+  function trueSide(x) {
+    var v = x ? Math.abs(x.n / x.d) : 0;
+    return Math.max(FLOOR_SIDE, UNIT_SIDE * Math.sqrt(v));
   }
 
   BON.createBalance = createBalance;
-  BON.miniBeam = miniBeam;
-  BON.balanceGeometry = { tiltFor: tiltFor, layout: layout, abcd: abcd, exprPieces: exprPieces,
+  BON.balanceGeometry = { tiltFor: tiltFor, layout: layout, trueSide: trueSide, UNIT_SIDE: UNIT_SIDE, abcd: abcd, exprPieces: exprPieces,
     MIN_TILT: MIN_TILT, MAX_TILT: MAX_TILT, NEVER_SHARE: NEVER_SHARE,
     FLOAT_ZONE: FLOAT_ZONE, WEIGHT_BAND: WEIGHT_BAND, PAN_HALF: PAN_HALF, FLOOR_SIDE: FLOOR_SIDE };
 })(typeof window !== "undefined" ? window : globalThis);

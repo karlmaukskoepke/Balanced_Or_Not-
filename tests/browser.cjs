@@ -22,7 +22,7 @@ const check = (ok, msg) => { console.log((ok ? "  ok  " : "  FAIL ") + msg); if 
   const browser = await chromium.launch();
   const page = await browser.newPage({ viewport: { width: 1280, height: 900 }, reducedMotion: "reduce" });
   const errors = []; page.on("pageerror", (e) => errors.push(e.message));
-  const open = async (q) => { await page.goto(base + "balance-test.html?" + q); await page.waitForSelector("[data-sub]"); };
+  const open = async (q) => { await page.goto(base + "balance-test.html?" + q); await page.waitForSelector("[data-total]"); };
   const shapes = (side) => page.$$eval(`.bon-pan[data-side=${side}] [data-shape]`,
     (els) => els.map((e) => e.dataset.shape + ":" + e.dataset.label));
   const angle = async () => parseFloat(await page.getAttribute("#balance", "data-angle"));
@@ -96,7 +96,7 @@ const check = (ok, msg) => { console.log((ok ? "  ok  " : "  FAIL ") + msg); if 
 
   // easing when motion is allowed
   const page2 = await browser.newPage({ viewport: { width: 1280, height: 900 }, reducedMotion: "no-preference" });
-  await page2.goto(base + "balance-test.html?eq=1&x=0"); await page2.waitForSelector("[data-sub]");
+  await page2.goto(base + "balance-test.html?eq=1&x=0"); await page2.waitForSelector("[data-total]");
   await page2.fill("#x-input", "9");
   await page2.waitForTimeout(120);
   const mid = parseFloat(await page2.getAttribute("#balance", "data-angle"));
@@ -107,7 +107,7 @@ const check = (ok, msg) => { console.log((ok ? "  ok  " : "  FAIL ") + msg); if 
 
   // phone width
   const page3 = await browser.newPage({ viewport: { width: 390, height: 844 }, reducedMotion: "reduce" });
-  await page3.goto(base + "balance-test.html?eq=10&x=4"); await page3.waitForSelector("[data-sub]");
+  await page3.goto(base + "balance-test.html?eq=10&x=4"); await page3.waitForSelector("[data-total]");
   const sw = await page3.evaluate(() => document.documentElement.scrollWidth);
   check(sw <= 390, "no sideways scroll at phone width (" + sw + ")");
   await page3.screenshot({ path: path.join(OUT, "phone-eq10-x4.png"), fullPage: true });

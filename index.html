@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>What Makes It Balance?</title>
-  <link rel="stylesheet" href="css/style.css?v=bf39725">
+  <link rel="stylesheet" href="css/style.css?v=v21a">
 </head>
 <body class="app" data-step="guess">
   <header class="bar">
@@ -33,43 +33,53 @@
   </header>
 
   <main class="stage">
-    <section class="top-row">
+    <section class="col-x" id="x-area" aria-label="Your value of x">
+      <form class="x-form" id="x-form" autocomplete="off">
+        <label for="x-input" class="x-label"><span class="eqn-x">x</span> =</label>
+        <input id="x-input" class="x-input" type="text" inputmode="text" spellcheck="false" autocomplete="off">
+        <button type="submit" class="btn btn-primary" id="x-try">Go</button>
+      </form>
+      <p class="msg" id="x-msg" aria-live="polite"></p>
+      <div class="cue-slot"><p class="cue" id="cue" hidden></p></div>
+      <div class="xbox-wrap" id="xbox-wrap">
+        <span class="xbox-name eqn-x" aria-hidden="true">x</span>
+        <div class="xbox" id="xbox" role="status" aria-label="Current value of x"></div>
+      </div>
+    </section>
+
+    <section class="col-center" aria-label="Equation and balance">
       <div class="eq-area" id="eq-area">
         <span class="eq-number" id="eq-number" aria-hidden="true"></span>
         <h1 class="eq-display" id="eq-display"></h1>
-        <p class="sr-only" id="arrow-sr" aria-live="polite"></p>
+        <p class="sr-only" id="result-sr" aria-live="polite"></p>
       </div>
-      <div class="x-area" id="x-area">
-        <form class="x-form" id="x-form" autocomplete="off">
-          <label for="x-input" class="x-label"><span class="eqn-x">x</span> =</label>
-          <input id="x-input" class="x-input" type="text" inputmode="text" spellcheck="false" autocomplete="off">
-          <button type="submit" class="btn btn-primary" id="x-try">Try it</button>
-          <p class="msg" id="x-msg" aria-live="polite"></p>
-        </form>
-        <div class="nl-row">
-          <div class="nl" id="nl">
-            <div class="nl-markers" id="nl-markers"></div>
-            <div class="nl-line" aria-hidden="true"></div>
-            <div class="nl-ticks" id="nl-ticks" aria-hidden="true"></div>
-            <input id="x-slider" class="nl-range" type="range" min="-10" max="10" step="0.01" value="0"
-                   aria-label="Number line slider for x">
-          </div>
-          <span class="slider-lock" id="slider-lock" title="The slider unlocks after 5 guesses and a prediction">&#128274; Locked</span>
-          <div class="xbox-wrap" id="xbox-wrap">
-            <span class="xbox-name eqn-x" aria-hidden="true">x</span>
-            <div class="xbox" id="xbox" role="status" aria-label="Current value of x"></div>
-          </div>
-        </div>
+      <div class="balance-box" id="balance-box">
+        <svg id="balance" class="balance"></svg>
       </div>
     </section>
 
-    <section class="balance-box" id="balance-box" aria-label="Balance">
-      <svg id="balance" class="balance"></svg>
+    <section class="col-right" aria-label="Questions and your guesses">
+      <div class="prompt" id="prompt" aria-live="polite"></div>
+      <div class="table-box" id="table-box">
+        <table class="guess-table" id="guess-table">
+          <caption class="sr-only">Your guesses</caption>
+          <thead><tr><th scope="col">#</th><th scope="col"><span class="eqn-x">x</span></th><th scope="col">Left</th>
+            <th scope="col">Right</th><th scope="col">Heavier</th></tr></thead>
+          <tbody id="guess-rows"></tbody>
+        </table>
+      </div>
     </section>
 
-    <section class="cards" id="cards" aria-label="Your guesses"></section>
-
-    <section class="instruction" id="instruction" aria-live="polite"></section>
+    <section class="col-line" aria-label="Number line">
+      <div class="nl" id="nl">
+        <div class="nl-markers" id="nl-markers"></div>
+        <div class="nl-line" aria-hidden="true"></div>
+        <div class="nl-ticks" id="nl-ticks" aria-hidden="true"></div>
+        <input id="x-slider" class="nl-range" type="range" min="-10" max="10" step="0.01" value="0"
+               aria-label="Number line slider for x">
+      </div>
+      <span class="slider-lock" id="slider-lock" title="The slider unlocks after 5 guesses and a prediction">&#128274; Locked</span>
+    </section>
   </main>
 
   <div class="coach" id="coach" hidden>
@@ -84,12 +94,12 @@
     </div>
   </div>
 
-  <script src="js/exact.js?v=bf39725"></script>
-  <script src="js/equations.js?v=bf39725"></script>
-  <script src="js/model.js?v=bf39725"></script>
-  <script src="js/flow.js?v=bf39725"></script>
-  <script src="js/equation-view.js?v=bf39725"></script>
-  <script src="js/balance.js?v=bf39725"></script>
-  <script src="js/activity.js?v=bf39725"></script>
+  <script src="js/exact.js?v=v21a"></script>
+  <script src="js/equations.js?v=v21a"></script>
+  <script src="js/model.js?v=v21a"></script>
+  <script src="js/flow.js?v=v21a"></script>
+  <script src="js/equation-view.js?v=v21a"></script>
+  <script src="js/balance.js?v=v21a"></script>
+  <script src="js/activity.js?v=v21a"></script>
 </body>
 </html>

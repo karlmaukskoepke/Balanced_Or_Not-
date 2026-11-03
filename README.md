@@ -8,7 +8,7 @@ straight from the `main` branch (Settings → Pages → Deploy from a branch →
 
 ## Pages
 
-- `index.html`: the student activity (spec v2; Stage A: the screen and the Guess step). Address options: `?all=1` unlocks every equation,
+- `index.html`: the student activity (spec v2.1; Stage A: the three-column screen and the Guess step). Address options: `?all=1` unlocks every equation,
   `?eq=4` opens equation 4, `?reset=1` clears this browser's saved progress.
 - `balance-test.html`: Stage 1 test page. Pick an equation, type or slide x. Address options: `?eq=3&x=1.33`, and
   `&rm=1` to pretend reduce-motion is on.
