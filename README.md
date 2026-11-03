@@ -8,17 +8,18 @@ straight from the `main` branch (Settings → Pages → Deploy from a branch →
 
 ## Pages
 
-- `index.html`: the student activity (spec v3; Stage 1: Build and Slide). Address options: `?all=1` unlocks every
-  equation, `?eq=4` opens equation 4.
+- `index.html`: the student activity (spec v3): Build, Slide, the one-tap check, Solve, Compare, reflection breaks,
+  Part 3 and the completion screen. Progress is saved in the browser. Address options: `?eq=4` opens equation 4,
+  `?reset=1` clears saved progress.
 - `balance-test.html`: test page. Any of the 12 equations, pre-built, slider always on. `?eq=3&x=4/3`.
 - `teachers.html`: printable sheets to download.
 
 ## Files
 
-- `js/equations.js`: **the 12 equations** (the only file to edit to change the problems).
+- `js/equations.js`: **the 12 equations**, their worked steps, the reflection prompts and the Part 3 reasons.
 - `js/exact.js`: exact arithmetic (every value is a fraction of whole numbers; no floating-point values shown).
 - `js/model.js`: side values, the model on the pans (x-boxes and one net number per side), equation text.
-- `js/flow.js`: checking rules and wording (typed x, the build check).
+- `js/flow.js`: checking rules and wording (typed x, the build check, the one-tap check, Part 3 counterexamples).
 - `js/balance.js`: the layered SVG balance and the one size rule for every piece.
 - `js/vslider.js`: the vertical number-line slider (snap, keys).
 - `js/explore.js`: keeps the slider, typed box, balance, x-box and readout in step.

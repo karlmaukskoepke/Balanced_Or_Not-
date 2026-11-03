@@ -79,9 +79,9 @@ body.app { font-size: 17px; height: 100vh; height: 100dvh; display: flex; flex-d
 @media (max-height: 540px), (max-width: 980px) { body.app { overflow: auto; height: auto; } }
 
 /* top bar */
-.bar { flex: 0 0 auto; display: flex; align-items: center; gap: 0.9rem; padding: 0.2rem 0.8rem;
+.bar { flex: 0 0 auto; display: flex; align-items: center; gap: 0.6rem; padding: 0.2rem 0.6rem;
   border-bottom: 2px solid var(--ink); position: relative; z-index: 70; background: #FFFFFF; }
-.bar-title { font-weight: 700; font-size: 1.05rem; white-space: nowrap; }
+.bar-title { font-weight: 700; font-size: 0.95rem; white-space: nowrap; }
 .bar-nav { display: flex; align-items: center; gap: 0.4rem; }
 .bar-progress { font-weight: 700; min-width: 4.6em; text-align: center; white-space: nowrap; }
 .bar .btn { white-space: nowrap; }
@@ -89,12 +89,12 @@ body.app { font-size: 17px; height: 100vh; height: 100dvh; display: flex; flex-d
 .btn:disabled { opacity: 0.4; cursor: default; }
 .btn-primary { background: var(--blue); color: #FFFFFF; }
 .btn-primary:hover:not(:disabled) { background: #174B98; }
-.bar-tools { margin-left: auto; display: flex; gap: 0.6rem; align-items: center; font-size: 0.85rem; white-space: nowrap; }
+.bar-tools { margin-left: auto; display: flex; gap: 0.45rem; align-items: center; font-size: 0.85rem; white-space: nowrap; }
 .btn-help { min-width: 34px; min-height: 34px; padding: 0; border-radius: 50%; font-size: 1.05rem; }
 .linkish { font: inherit; color: var(--blue); background: none; border: 0; text-decoration: underline; cursor: pointer; padding: 0.3rem; }
-.steps { display: flex; gap: 0.15rem; list-style: none; margin: 0 auto; padding: 0; font-size: 0.95rem; font-weight: 700; white-space: nowrap; }
-.steps li { padding: 0.2rem 0.6rem; border-radius: 999px; color: var(--muted); border: 2px solid transparent; }
-.steps li + li::before { content: "\25B8"; margin-right: 0.45rem; color: #9AA5B1; }
+.steps { display: flex; gap: 0.05rem; list-style: none; margin: 0 auto; padding: 0; font-size: 0.85rem; font-weight: 700; white-space: nowrap; }
+.steps li { padding: 0.15rem 0.45rem; border-radius: 999px; color: var(--muted); border: 2px solid transparent; }
+.steps li + li::before { content: "\25B8"; margin-right: 0.3rem; color: #9AA5B1; }
 .steps li[aria-current="step"] { color: var(--blue); border-color: var(--blue); background: var(--blue-tint); }
 
 /* stage: slider column, centre (equation, balance, readout), prompt panel */
@@ -184,7 +184,7 @@ body[data-step="build"] .bon-pan [data-shape], body[data-step="build"] .bon-back
 @keyframes rel-arrive { 0% { transform: scale(0.6); } 60% { transform: scale(1.25); } 100% { transform: scale(1); } }
 
 /* prompt panel */
-.prompt { flex: 0 1 auto; min-height: 0; display: flex; flex-direction: column; gap: 0.55rem; padding: 0.7rem 0.8rem;
+.prompt { flex: 0 1 auto; min-height: 0; display: flex; flex-direction: column; gap: 0.45rem; padding: 0.6rem 0.75rem;
   border: 2px solid var(--blue); border-radius: 12px; background: #FFFFFF; }
 .prompt p { margin: 0; }
 .prompt-q { font-weight: 700; font-size: 1.25rem; }
@@ -207,11 +207,104 @@ body[data-step="build"] .col-slide, body[data-step="build"] .readout { opacity: 
 .coach-buttons { display: flex; align-items: center; gap: 0.8rem; }
 .coach-count { margin-left: auto; color: var(--muted); font-size: 0.85rem; }
 
+/* equation strip (every equation is clickable; each keeps its own progress) */
+.eqstrip { display: flex; gap: 0.15rem; }
+.eqpick { font: inherit; font-weight: 700; font-size: 0.8rem; width: 28px; height: 28px; padding: 0; border-radius: 50%;
+  border: 2px solid var(--blue); background: #FFFFFF; color: var(--blue); cursor: pointer; position: relative; }
+.eqpick.is-done { background: var(--blue-tint); }
+.eqpick.is-done::after { content: "\2713"; position: absolute; right: -4px; top: -6px; font-size: 0.7rem; color: var(--green);
+  background: #FFFFFF; border-radius: 50%; line-height: 1; }
+.eqpick[aria-current="true"] { background: var(--blue); color: #FFFFFF; }
+.steps li.is-skipped { text-decoration: line-through; opacity: 0.5; }
+
+/* the one-tap check and Part 3 choices */
+.choices { display: grid; gap: 0.4rem; }
+.prompt .choice { font-size: 1.1rem; min-height: 46px; text-align: left; padding: 0.3rem 0.8rem; }
+.choice[aria-pressed="true"], .reason[aria-pressed="true"] { background: var(--blue); color: #FFFFFF; }
+.prompt .choice { align-self: stretch; }
+.prompt-sub { font-weight: 700; color: var(--muted); }
+.reasons { display: grid; gap: 0.35rem; }
+.prompt .reason { font-size: 0.86rem; font-weight: 700; text-align: left; padding: 0.2rem 0.5rem; min-height: 36px; line-height: 1.2; }
+.choices.is-row { grid-template-columns: repeat(3, 1fr); }
+.prompt .choices.is-row .choice { font-size: 0.8rem; text-align: center; padding: 0.2rem 0.3rem; min-height: 44px; line-height: 1.15; }
+.prompt .reason { align-self: stretch; }
+.counter { border: 2px solid var(--ink); background: #FFF8DC; border-radius: 10px; padding: 0.3rem 0.5rem; display: grid; gap: 0.2rem; font-size: 0.9rem; }
+.counter p { margin: 0; }
+.counter:focus { outline: 3px solid var(--focus); }
+.counter-eq { display: flex; align-items: center; gap: 0.4rem; font-size: 1.15rem; }
+.sort-num { display: inline-flex; align-items: center; justify-content: center; width: 1.7em; height: 1.7em; flex: none;
+  border: 2px solid var(--blue); border-radius: 50%; color: var(--blue); font-weight: 700; font-size: 0.8rem; }
+.eqline { font-weight: 700; white-space: nowrap; }
+
+/* worked steps, in the sheet's layout: the added term under each side */
+.work-wrap { display: grid; gap: 0.25rem; }
+.work { display: grid; grid-template-columns: 1fr auto 1fr; column-gap: 0.5rem; row-gap: 0.05rem; font-weight: 700; font-size: 1.05rem;
+  padding: 0.3rem 0.4rem; border: 2px solid var(--line); border-radius: 10px; background: var(--panel); }
+.w-l { text-align: right; } .w-r { text-align: left; } .w-eq { text-align: center; }
+.w-op { color: var(--muted); font-size: 0.92rem; }
+.w-label { grid-column: 1 / -1; font-size: 0.78rem; color: var(--muted); font-weight: 700; margin-top: 0.15rem; }
+.w-text { font-size: 0.9rem; }
+.w-check { font-weight: 700; }
+.prompt-col { font-size: 1rem; border-left: 5px solid var(--blue); padding: 0.2rem 0.5rem; background: var(--blue-tint); border-radius: 4px; }
+
+/* stop screens (Solve, reflection breaks, welcome back, completion) cover the stage; the top bar stays */
+.stage { position: relative; }
+.stop { position: absolute; inset: 0; z-index: 45; display: flex; align-items: center; justify-content: center; background: rgba(255, 255, 255, 0.96); }
+.stop[hidden] { display: none; }
+.stop-card { max-width: 980px; display: flex; flex-direction: column; align-items: center; gap: 1rem; text-align: center; padding: 1rem 2rem; }
+.stop-eq { display: flex; align-items: center; gap: 1rem; font-size: 3.6rem; }
+.stop-eq .eq-number { width: 3.2rem; height: 3.2rem; font-size: 1.6rem; }
+.stop-lead { margin: 0; font-size: 2rem; font-weight: 700; }
+.stop-text { margin: 0; font-size: 1.35rem; max-width: 46em; }
+.stop-prompt { margin: 0; font-size: 1.9rem; font-weight: 700; line-height: 1.3; max-width: 30em; display: flex; gap: 0.8rem; align-items: baseline; text-align: left; }
+.stop-prompt.is-small { font-size: 1.45rem; }
+.prompt-n { flex: none; display: inline-flex; align-items: center; justify-content: center; min-width: 2.2em; height: 2.2em; font-size: 0.7em;
+  border: 3px solid var(--blue); border-radius: 50%; color: var(--blue); }
+.btn-big { font-size: 1.35rem; min-height: 54px; padding: 0.3rem 1.6rem; }
+.stop-buttons { display: flex; gap: 1rem; }
+.stop-note { margin: 0; font-size: 0.95rem; color: var(--muted); }
+.results { border-collapse: collapse; font-size: 1rem; text-align: left; }
+.results th, .results td { padding: 0.14rem 0.7rem; border-bottom: 1px solid #DDE3EC; }
+.results thead th { font-size: 0.85rem; color: var(--muted); border-bottom: 2px solid var(--line); }
+.results .c-eq { font-size: 1.05rem; }
+.results .c-yes { color: var(--green); font-weight: 700; }
+.results .c-no { font-weight: 700; }
+body.is-stopped .bar-tools .btn-help { visibility: hidden; }
+
+/* "Check the slider again": everything dims except the slider column */
+.veil { position: fixed; inset: 0; z-index: 50; background: rgba(60, 64, 72, 0.55); }
+.veil[hidden] { display: none; }
+body.is-spotlight .col-slide { position: relative; z-index: 60; box-shadow: 0 0 0 4px var(--focus); }
+.spot-msg { margin: 0 0 0.3rem; font-weight: 700; font-size: 1.05rem; background: #FFF1B8; border: 2px solid var(--ink); border-radius: 8px; padding: 0.2rem 0.4rem; }
+.spot-msg:empty { display: none; }
+
 /* the test page: the same screen with an equation picker in the right column */
 .picker { display: grid; grid-template-columns: repeat(6, 1fr); gap: 0.35rem; }
 .picker button { font: inherit; font-weight: 700; min-height: 40px; border: 2px solid var(--blue); border-radius: 50%;
   background: #FFFFFF; color: var(--blue); cursor: pointer; }
 .picker button[aria-pressed="true"] { background: var(--blue); color: #FFFFFF; }
+
+.prompt-q.is-compact { font-size: 1.12rem; }
+.prompt-q.is-compact .prompt-help { font-weight: 400; }
+
+/* shorter windows (1366 x 650): a little more room for the prompt panel */
+@media (max-height: 719px) {
+  .stage { grid-template-columns: 196px minmax(0, 1fr) 352px; }
+  .prompt-q { font-size: 1.12rem; }
+  .prompt-help { font-size: 0.88rem; }
+  .work { font-size: 0.95rem; padding: 0.2rem 0.35rem; }
+  .w-label { font-size: 0.72rem; margin-top: 0.05rem; }
+  .w-op { font-size: 0.85rem; }
+  .w-text { font-size: 0.84rem; }
+  .prompt-col { font-size: 0.88rem; }
+  .prompt .reason { font-size: 0.8rem; min-height: 32px; }
+  .counter { font-size: 0.84rem; }
+  .counter-eq { font-size: 1rem; }
+  .stop-card { gap: 0.55rem; padding: 0.4rem 1.5rem; }
+  .stop-card .results th, .stop-card .results td { padding: 0.04rem 0.6rem; }
+  .stop-card .results { font-size: 0.92rem; }
+  .stop-card:has(.results) .stop-lead { font-size: 1.5rem; }
+}
 
 @media (min-height: 720px) {
   body.app { font-size: 18px; }
