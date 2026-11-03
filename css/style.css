@@ -228,6 +228,9 @@ body.app {
 .nl-range:focus-visible { outline: none; }
 .nl-range:focus-visible::-webkit-slider-thumb { outline: 4px solid var(--focus); outline-offset: 2px; }
 
+.slider-lock { flex: none; font-size: 0.8rem; font-weight: 700; color: var(--muted); border: 2px solid var(--line);
+  border-radius: 6px; padding: 0.05rem 0.4rem; background: #FFFFFF; white-space: nowrap; }
+.slider-lock[hidden] { display: none; }
 .xbox-wrap { flex: none; width: 76px; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 64px; }
 .xbox-name { font-weight: 700; font-size: 1.1rem; font-style: italic; line-height: 1; }
 .xbox { display: flex; align-items: center; justify-content: center; min-width: 38px; min-height: 38px; font-weight: 700;

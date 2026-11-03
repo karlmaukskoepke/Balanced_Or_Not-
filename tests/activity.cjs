@@ -41,7 +41,8 @@ module.exports = async function (browser, base, OUT, check) {
     check((await arrow()) === "right", `${tag} #1: arrow at "=" points right (right heavier)`);
     check((await page.textContent("#eq-arrow")).includes("right heavier"), `${tag} #1: the arrow carries text`);
     check(JSON.stringify(await markers()) === '["right"]', `${tag} #1: a ▶ marker on the number line`);
-    check(await page.isDisabled("#x-slider"), `${tag} #1: slider locked during guessing`);
+    check(await page.isDisabled("#x-slider") && (await page.isVisible("#slider-lock")) && (await page.textContent("#slider-lock")).includes("Locked"),
+      `${tag} #1: slider locked during guessing, with a "Locked" label`);
     // coach marks
     let steps = 0, ringsOk = true;
     const seen = [];

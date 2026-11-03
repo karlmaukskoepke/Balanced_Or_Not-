@@ -469,6 +469,7 @@
     $("x-try").disabled = !guessing;
     if (!guessing) $("x-msg").textContent = "";
     slider.disabled = true; // unlocks after five guesses and a prediction (Stage B)
+    $("slider-lock").hidden = !slider.disabled || eq.part === 3;
     $("x-area").classList.toggle("is-part3", st === "part3");
 
     var focusTarget = drawInstruction(eq, r);
