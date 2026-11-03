@@ -1,493 +1,250 @@
 /*
- * What Makes It Balance? — the student page (spec v2).
- * Stage A (v2.1 layout): the screen and the Guess step. Predict, Slide, Solve and Answer come in Stage B.
+ * What Makes It Balance? — the student page (spec v3). Stage 1: Build and Slide.
  *
- * Layout: x box and a growing x-box (left), the equation above the balance (center), the prompt panel and the
- * guess table (right), the number line along the bottom.
- * Guess step: the student types x; the slider thumb travels there (balance, boxes, totals and the x-box update
- * on the way), turns green on arrival, a marker goes on the number line and a row goes in the table.
- * Equations 1-3 start with two given guesses. No questions per guess.
+ * Build (equations 1-4): the student builds each side with x / +1 / −1 (click a piece to remove it) and presses
+ * "I built the equation". Equations 5-12 arrive pre-built ("Look at the model…", Continue). The beam stays level.
+ * Slide: the slider unlocks; drag, nudge or type x. "I've seen enough" appears after three different positions.
+ * Check, Solve and Compare come in Stage 2. Part 3 (#11-12): pre-built, the slider broken.
  *
- * Address options (for the teacher):  ?eq=4  open equation 4 (if unlocked) · ?all=1 unlock every equation ·
- * ?reset=1 clear this browser's saved progress first.
+ * Address options (for the teacher): ?eq=4 open equation 4 · ?all=1 unlock every equation.
  */
 (function () {
   "use strict";
   var BON = window.BON, E = BON.exact, M = BON.model, F = BON.flow, T = F.TEXT;
-  var EQS = BON.EQUATIONS, CATS = BON.CATEGORIES;
-  var KEY = "what-makes-it-balance-v2";
-  var COL_ORDER = ["one", "always", "never"];
-  var TRAVEL_MAX_MS = 1000;
+  var EQS = BON.EQUATIONS;
 
   var $ = function (id) { return document.getElementById(id); };
   var params = new URLSearchParams(location.search);
   var unlockAll = params.get("all") === "1";
 
-  /* ---------- saved state ---------- */
-
-  function blank() { return { current: 0, coachSeen: false, eqs: {} }; }
-  function load() {
-    try {
-      if (params.get("reset") === "1") localStorage.removeItem(KEY);
-      var s = JSON.parse(localStorage.getItem(KEY) || "null");
-      if (s && s.eqs) return s;
-    } catch (e) { /* storage blocked or unreadable: start fresh */ }
-    return blank();
-  }
-  function save() { try { localStorage.setItem(KEY, JSON.stringify(state)); } catch (e) { /* keep working */ } }
-  var state = load();
-  if (params.get("reset") === "1") {
-    params.delete("reset");
-    try { history.replaceState(null, "", location.pathname + (params.toString() ? "?" + params : "")); } catch (e) { /* ignore */ }
-  }
-
+  // Stage 1 keeps progress in memory only (saving comes in Stage 2)
+  var state = { current: 0, coachSeen: false, eqs: {} };
   function rec(eq) {
-    return state.eqs[eq.id] || (state.eqs[eq.id] = { guesses: [], note: false, prediction: null, sort: null });
+    return state.eqs[eq.id] || (state.eqs[eq.id] = {
+      model: eq.built ? M.emptyModel() : M.modelFromEquation(eq), built: false, positions: [], slid: false });
   }
-
-  /* ---------- where the student is ---------- */
-
   function step(eq, r) {
     if (eq.part === 3) return "part3";
-    if (r.guesses.length < F.GUESSES) return "guess";
-    return "predict"; // Stage B builds Predict, Slide, Solve and Answer
+    if (!r.built) return "build";
+    if (!r.slid) return "slide";
+    return "check"; // Stage 2
   }
   function isUnlocked(i) {
     if (unlockAll || i === 0) return true;
     var prev = state.eqs[EQS[i - 1].id];
-    return !!(prev && prev.guesses.length >= F.GUESSES); // Stage A: five guesses open the next equation
+    return !!(prev && (prev.slid || EQS[i - 1].part === 3));
   }
-  function seedDue(eq, r) { return r.guesses.length < F.seedsFor(eq).length; }
-
   var startEq = parseInt(params.get("eq"), 10);
   if (startEq >= 1 && startEq <= EQS.length && isUnlocked(startEq - 1)) state.current = startEq - 1;
-  if (!(state.current >= 0 && state.current < EQS.length) || !isUnlocked(state.current)) state.current = 0;
 
-  /* ---------- current x (what the slider and balance show) ---------- */
-
-  var view = BON.createBalance($("balance"));
-  var slider = $("x-slider"), input = $("x-input");
-  // cur.x: exact value shown; cur.pos: slider position (a number, for drawing only); cur.landed: arrow showing
-  var cur = { x: null, style: "int", pos: 0, landed: false };
-  var travel = null;
-
-  function reducedMotion() { return !!(window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches); }
-  function posOf(x) { return x.n / x.d; }
-
-  function showX(eq) {
-    view.update({ eq: eq, x: cur.x, style: cur.style, tilt: "live" });
-    slider.value = String(Math.round(cur.pos * 100) / 100);
-    drawXBox(cur.x, cur.style);
-  }
-
-  /* Move the thumb to x (animated, at most about 1 s), updating the balance on the way; then land. */
-  function travelTo(eq, x, style, onLand) {
-    if (travel) { cancelAnimationFrame(travel.id); travel = null; }
-    var from = cur.pos, to = posOf(x);
-    cur.landed = false;
-    slider.classList.remove("is-arrived");
-    var finish = function () {
-      travel = null;
-      cur.x = x; cur.style = style; cur.pos = to; cur.landed = true;
-      showX(eq);
-      slider.classList.add("is-arrived");
-      var c = M.compare(eq, x);
-      $("result-sr").textContent = "x = " + E.fmtValue(x, style) + ": " + heavierText(c, style) + ".";
-      if (onLand) onLand();
-    };
-    if (reducedMotion() || Math.abs(to - from) < 0.005) { finish(); return; }
-    var ms = Math.min(TRAVEL_MAX_MS, 300 + 60 * Math.abs(to - from)), start = null;
-    travel = { id: 0 };
-    var stepFn = function (ts) {
-      if (start === null) start = ts;
-      var t = Math.min(1, (ts - start) / ms);
-      var e = t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
-      if (t >= 1) { finish(); return; }
-      cur.pos = from + (to - from) * e;
-      cur.x = E.frac(Math.round(cur.pos * 100), 100);
-      cur.style = "decimal";
-      showX(eq);
-      travel.id = requestAnimationFrame(stepFn);
-    };
-    travel.id = requestAnimationFrame(stepFn);
-  }
-
-  /* ---------- the x-box (left column): the same scale and outline as the boxes on the pans ---------- */
-
-  function drawXBox(x, style) {
-    var box = $("xbox"), BG = BON.balanceGeometry;
-    var px = view.unitPx() || 0.6;
-    var side = BG.trueSide(x) * px;
-    box.style.width = box.style.height = side.toFixed(1) + "px";
-    if (!x) { box.textContent = "x"; box.className = "xbox is-unknown"; box.style.fontSize = ""; return; }
-    var s = E.fSign(x);
-    box.className = "xbox" + (s === 0 ? " is-zero" : s < 0 ? " is-negative" : "");
-    box.textContent = E.fmtValue(x, style);
-    var len = box.textContent.length;
-    box.style.fontSize = Math.max(15, Math.min(side * 0.42, (side - 8) / (len * 0.58))).toFixed(1) + "px";
-  }
-
-  /* ---------- the number line: ticks, labels, guess markers ---------- */
-
-  function nlLeft(eq, v) {
-    var lo = eq.sliderRange[0], hi = eq.sliderRange[1], f = (v - lo) / (hi - lo);
-    return "calc(var(--thumb) / 2 + (100% - var(--thumb)) * " + f.toFixed(5) + ")";
-  }
-  /* A label at every integer when there is room (about 34 px per step); otherwise every 2. */
-  function drawTicks(eq) {
-    var ticks = $("nl-ticks"), lo = eq.sliderRange[0], hi = eq.sliderRange[1];
-    var perUnit = ($("nl").clientWidth - 26) / (hi - lo);
-    var every = perUnit >= 34 ? 1 : 2;
-    ticks.setAttribute("data-label-every", every);
-    ticks.textContent = "";
-    for (var v = lo; v <= hi; v++) {
-      var t = document.createElement("span");
-      var major = v % every === 0;
-      t.className = "nl-tick" + (v % 5 === 0 ? " is-major" : "") + (v === 0 ? " is-zero" : "");
-      t.style.left = nlLeft(eq, v);
-      ticks.appendChild(t);
-      if (major) {
-        var lab = document.createElement("span");
-        lab.className = "nl-num";
-        lab.style.left = nlLeft(eq, v);
-        lab.textContent = E.fmtValue(E.frac(v));
-        ticks.appendChild(lab);
-      }
+  var ex = BON.createExplorer({
+    svg: $("balance"), sliderHost: $("vslider"), form: $("x-form"), input: $("x-input"), msg: $("x-msg"),
+    xbox: $("xbox"), totL: $("tot-left"), totR: $("tot-right"), rel: $("rel"), relSr: $("rel-sr"),
+    onMove: function (x) {
+      var eq = EQS[state.current], r = rec(eq);
+      if (step(eq, r) !== "slide") return;
+      if (!r.positions.some(function (p) { return E.fEq(p, x); })) r.positions.push(x);
+      if (r.positions.length === F.MIN_POSITIONS) drawPrompt(eq, r);
     }
-  }
-  /* Markers sit above the line; markers too close together stack into rows so none hides another. */
-  var MARKER_GAP_PX = 26, MARKER_ROW_PX = 25;
-  function drawMarkers(eq, r) {
-    var box = $("nl-markers"), nl = $("nl");
-    box.textContent = "";
-    var lo = eq.sliderRange[0], hi = eq.sliderRange[1];
-    var usable = Math.max(1, nl.clientWidth - 26);
-    var rows = []; // last pixel x used in each row
-    var items = r.guesses.map(function (g) { return { g: g, px: (posOf(g.x) - lo) / (hi - lo) * usable }; });
-    items.slice().sort(function (a, b) { return a.px - b.px; }).forEach(function (it) {
-      var k = 0;
-      while (k < rows.length && it.px - rows[k] < MARKER_GAP_PX) k++;
-      rows[k] = it.px; it.row = k;
-    });
-    items.forEach(function (it) {
-      var g = it.g, c = M.compare(eq, g.x);
-      var m = document.createElement("span");
-      m.className = "nl-marker is-" + c.heavier;
-      m.style.left = nlLeft(eq, posOf(g.x));
-      m.style.top = ((rows.length - 1 - it.row) * MARKER_ROW_PX) + "px";
-      m.setAttribute("data-heavier", c.heavier);
-      m.innerHTML = "<span aria-hidden=\"true\">" + (c.heavier === "left" ? "\u25C0" : c.heavier === "right" ? "\u25B6" : "\u2713") +
-        "</span><span class=\"sr-only\">x = " + E.fmtValue(g.x, g.style) + ", " +
-        (c.heavier === "balanced" ? "balanced" : c.heavier + " heavier") + "</span>";
-      box.appendChild(m);
-    });
-    nl.style.setProperty("--marker-rows", Math.max(1, rows.length));
-  }
-
-  /* ---------- the guess table (the page works out the Heavier column) ---------- */
-
-  function heavierText(c, style) {
-    if (c.heavier === "balanced") return "Balanced";
-    return (c.heavier === "left" ? "Left" : "Right") + " heavier by " + E.fmtValue(c.diff, style);
-  }
-  function drawTable(eq, r) {
-    var body = $("guess-rows");
-    body.textContent = "";
-    $("table-box").hidden = eq.part === 3;
-    for (var i = 0; i < F.GUESSES; i++) {
-      var g = r.guesses[i], tr = document.createElement("tr");
-      var th = document.createElement("th");
-      th.scope = "row";
-      th.textContent = i + 1;
-      tr.appendChild(th);
-      if (!g) {
-        tr.className = "is-empty";
-        for (var k = 0; k < 4; k++) tr.appendChild(document.createElement("td"));
-      } else {
-        if (g.given) { var tag = document.createElement("span"); tag.className = "given"; tag.textContent = "given"; th.appendChild(tag); }
-        var c = M.compare(eq, g.x);
-        [E.fmtValue(g.x, g.style), E.fmtValue(c.left, g.style), E.fmtValue(c.right, g.style)].forEach(function (t) {
-          var td = document.createElement("td"); td.textContent = t; tr.appendChild(td);
-        });
-        var h = document.createElement("td");
-        h.className = "heavier is-" + c.heavier;
-        var glyph = c.heavier === "left" ? "\u25C0 " : c.heavier === "balanced" ? "\u2713 " : "";
-        h.textContent = glyph + heavierText(c, g.style) + (c.heavier === "right" ? " \u25B6" : "");
-        tr.appendChild(h);
-        tr.setAttribute("data-heavier", c.heavier);
-      }
-      body.appendChild(tr);
-    }
-  }
-
-  /* ---------- the sort bar ---------- */
-
-  function drawSortBar() {
-    var counts = { one: 0, always: 0, never: 0 }, lists = { one: [], always: [], never: [] };
-    EQS.forEach(function (eq) {
-      var r = state.eqs[eq.id];
-      if (r && r.sort) { counts[r.sort]++; lists[r.sort].push(eq); }
-    });
-    $("sortbar-toggle").innerHTML = "<span class=\"sortbar-label\">Sorted:</span> " + COL_ORDER.map(function (k) {
-      return "<b title=\"" + CATS[k].title + "\">" + counts[k] + "<span class=\"sr-only\"> " + CATS[k].title + "</span></b>";
-    }).join("<span aria-hidden=\"true\"> · </span>") + " <span class=\"sortbar-caret\" aria-hidden=\"true\">▾</span>";
-    var panel = $("sortbar-panel");
-    panel.textContent = "";
-    COL_ORDER.forEach(function (k) {
-      var col = document.createElement("div");
-      col.className = "sort-col";
-      col.innerHTML = "<h2>" + CATS[k].title + "</h2><p class=\"sort-sub\">" + CATS[k].sub + "</p>";
-      var ul = document.createElement("ul");
-      lists[k].forEach(function (eq) {
-        var li = document.createElement("li");
-        var num = document.createElement("span"); num.className = "sort-num"; num.textContent = eq.id;
-        var eqEl = document.createElement("span");
-        BON.renderEquation(eqEl, eq, { emphasis: eq.part === 2 });
-        li.appendChild(num); li.appendChild(eqEl); ul.appendChild(li);
-      });
-      if (!lists[k].length) { var li = document.createElement("li"); li.className = "sort-none"; li.textContent = "None yet"; ul.appendChild(li); }
-      col.appendChild(ul);
-      panel.appendChild(col);
-    });
-  }
-  function toggleSortPanel(open) {
-    var panel = $("sortbar-panel");
-    if (open === undefined) open = panel.hidden;
-    panel.hidden = !open;
-    $("sortbar-toggle").setAttribute("aria-expanded", open ? "true" : "false");
-  }
-  $("sortbar-toggle").addEventListener("click", function () { toggleSortPanel(); });
-  document.addEventListener("click", function (e) {
-    if (!$("sortbar-panel").hidden && !e.target.closest(".sortbar")) toggleSortPanel(false);
   });
 
-  /* ---------- the prompt panel (right column, top) and the short cue by the x box ---------- */
+  /* ---------- building ---------- */
 
-  function showCue(text) {
-    var cue = $("cue");
-    cue.textContent = text || "";
-    cue.hidden = !text;
+  function sideOf(r, s) { return r.model[s]; }
+  function addX(side) { side.groups[side.groups.length - 1]++; }
+  function removeX(side) {
+    for (var i = side.groups.length - 1; i >= 0; i--) if (side.groups[i] > 0) { side.groups[i]--; return; }
+  }
+  var buildMsg = { text: "", side: null };
+  function afterBuildChange(eq, r) {
+    buildMsg = { text: "", side: null };
+    document.querySelectorAll(".palette").forEach(function (p) { p.classList.remove("is-look"); });
+    ex.show(eq, r.model, { build: true });
+    var m = document.querySelector("#prompt .prompt-msg");
+    if (m) m.textContent = "";
+  }
+  document.querySelectorAll(".palette").forEach(function (pal) {
+    pal.addEventListener("click", function (e) {
+      var b = e.target.closest("button");
+      if (!b) return;
+      var eq = EQS[state.current], r = rec(eq);
+      if (step(eq, r) !== "build" || !eq.built) return;
+      var side = sideOf(r, pal.getAttribute("data-side")), act = b.getAttribute("data-act");
+      if (act === "x" && M.xCount(side) < 9) addX(side);
+      if (act === "plus" && side.c < 12) side.c++;
+      if (act === "minus" && side.c > -12) side.c--;
+      if (act === "clear") { side.groups = [0]; side.c = 0; }
+      afterBuildChange(eq, r);
+    });
+  });
+  // clicking a piece on a pan removes it (Build step only)
+  $("balance").addEventListener("click", function (e) {
+    var eq = EQS[state.current], r = rec(eq);
+    if (step(eq, r) !== "build" || !eq.built) return;
+    var piece = e.target.closest("[data-shape]"), group = e.target.closest("[data-side]");
+    if (!piece || !group) return;
+    var side = sideOf(r, group.getAttribute("data-side")), shape = piece.getAttribute("data-shape");
+    if (/box|x-balloon/.test(shape)) removeX(side); else side.c = 0;
+    afterBuildChange(eq, r);
+  });
+
+  /* ---------- the prompt panel ---------- */
+
+  function h(tag, attrs, kids) {
+    var e = document.createElement(tag);
+    for (var k in attrs || {}) {
+      if (k === "text") e.textContent = attrs[k];
+      else if (k === "class") e.className = attrs[k];
+      else if (k.slice(0, 2) === "on") e.addEventListener(k.slice(2), attrs[k]);
+      else e.setAttribute(k, attrs[k]);
+    }
+    (kids || []).forEach(function (c) { if (c) e.appendChild(typeof c === "string" ? document.createTextNode(c) : c); });
+    return e;
   }
 
   function drawPrompt(eq, r) {
-    var bar = $("prompt"), st = step(eq, r);
-    bar.textContent = "";
-    showCue("");
-    var p = document.createElement("p");
-    p.className = "prompt-q";
-    bar.appendChild(p);
-    var focusTarget = null;
-    if (st === "part3") {
-      p.textContent = "Part 3 (the broken slider) comes in a later build.";
-    } else if (st === "guess") {
-      var n = r.guesses.length;
-      if (n < F.seedsFor(eq).length) {
-        p.textContent = n === 0 ? "Watch: the first guess is given." : "Given guess " + n + ": x = " +
-          E.fmtValue(r.guesses[n - 1].x, r.guesses[n - 1].style) + ". Watch the beam and the arrow.";
-        if (n > 0) {
-          var b = document.createElement("button");
-          b.type = "button"; b.className = "btn btn-primary"; b.id = "next-guess";
-          b.textContent = "Next: given guess " + (n + 1) + " ›";
-          b.addEventListener("click", function () { addGuess(eq, r, F.seedsFor(eq)[n], "int", true); });
-          bar.appendChild(b);
-          focusTarget = b;
-        }
-      } else {
-        p.textContent = "Guess " + (n + 1) + " of " + F.GUESSES + ".";
-        if (!input.value) showCue("Type a value for x");
-        focusTarget = input;
+    var p = $("prompt"), st = step(eq, r), focus = null;
+    p.textContent = "";
+    if (st === "build" && eq.built) {
+      p.appendChild(h("p", { "class": "prompt-q", text: "Build the equation on the balance." }));
+      p.appendChild(h("p", { "class": "prompt-help", text: "x adds a box. +1 and −1 change the number on that side. Click a piece to take it off." }));
+      var b = h("button", { type: "button", "class": "btn btn-primary", id: "built-btn", text: "I built the equation", onclick: function () {
+        var res = F.checkBuild(eq, r.model);
+        if (res.ok) { r.built = true; r.model = M.modelFromEquation(eq); enterStep(eq, r, true); return; }
+        buildMsg = { text: res.message, side: res.wrong };
+        document.querySelectorAll(".palette").forEach(function (pl) {
+          pl.classList.toggle("is-look", res.wrong === "both" || pl.getAttribute("data-side") === res.wrong);
+        });
+        p.querySelector(".prompt-msg").textContent = res.message;
+      } });
+      p.appendChild(b);
+      p.appendChild(h("p", { "class": "prompt-msg is-help", role: "status", text: buildMsg.text }));
+      focus = document.querySelector('.palette[data-side="left"] .pbtn');
+    } else if (st === "build") {
+      p.appendChild(h("p", { "class": "prompt-q", text: T.lookModel }));
+      focus = h("button", { type: "button", "class": "btn btn-primary", id: "continue-btn", text: "Continue", onclick: function () {
+        r.built = true; enterStep(eq, r, true);
+      } });
+      p.appendChild(focus);
+    } else if (st === "slide") {
+      p.appendChild(h("p", { "class": "prompt-q", text: "Move the slider. Where does it balance?" }));
+      p.appendChild(h("p", { "class": "prompt-help", text: "Drag it, use the arrow keys, or type a value for x." }));
+      if (r.positions.length >= F.MIN_POSITIONS) {
+        p.appendChild(h("button", { type: "button", "class": "btn btn-primary", id: "enough-btn", text: "I’ve seen enough", onclick: function () {
+          r.slid = true; enterStep(eq, r, true);
+        } }));
       }
-      if (r.note) {
-        var note = document.createElement("p");
-        note.className = "prompt-note";
-        note.textContent = T.secondValue;
-        bar.appendChild(note);
-      }
+      focus = ex.slider.thumb;
+    } else if (st === "part3") {
+      p.appendChild(h("p", { "class": "prompt-q", text: "The slider broke." }));
+      p.appendChild(h("p", { "class": "prompt-help", text: "Part 3 (predict without the slider) comes in Stage 2 of the build." }));
+      if (state.current < EQS.length - 1) focus = nextButton(p);
     } else {
-      p.textContent = "Five guesses done. Predict comes next (in the next part of the build).";
-      if (state.current < EQS.length - 1) {
-        var nb = document.createElement("button");
-        nb.type = "button"; nb.className = "btn"; nb.textContent = "Next equation ›";
-        nb.addEventListener("click", function () { go(1); });
-        bar.appendChild(nb);
-        focusTarget = nb;
-      }
+      p.appendChild(h("p", { "class": "prompt-q", text: "Next comes the one-tap check (Stage 2 of the build)." }));
+      if (state.current < EQS.length - 1) focus = nextButton(p);
     }
-    return focusTarget;
+    return focus;
+  }
+  function nextButton(p) {
+    var b = h("button", { type: "button", "class": "btn", id: "next-eq", text: "Next equation ›", onclick: function () { go(1); } });
+    p.appendChild(b);
+    return b;
   }
 
-  /* ---------- guessing ---------- */
+  /* ---------- drawing a step ---------- */
 
-  function addGuess(eq, r, x, style, given) {
-    if (travel) return;
-    input.disabled = true; $("x-try").disabled = true;
-    var nb = $("next-guess"); if (nb) nb.disabled = true;
-    travelTo(eq, x, style, function () {
-      r.guesses.push({ x: x, style: style, given: !!given });
-      if (!r.note && M.compare(eq, x).heavier === "balanced" && r.guesses.length < F.GUESSES) r.note = true;
-      if (!given) input.value = "";
-      save();
-      render({ focus: true, keepX: true });
-      if (eq.id === 1 && !state.coachSeen && r.guesses.length === 1) startCoach();
+  function enterStep(eq, r, focus) {
+    var st = step(eq, r);
+    document.body.setAttribute("data-step", st === "part3" ? "slide" : st);
+    document.body.setAttribute("data-part", eq.part);
+    Array.prototype.forEach.call($("steps").children, function (li) {
+      var on = li.getAttribute("data-step") === (st === "part3" ? "slide" : st);
+      if (on) li.setAttribute("aria-current", "step"); else li.removeAttribute("aria-current");
     });
-  }
+    $("eq-number").textContent = eq.id;
+    BON.renderEquation($("eq-display"), eq, { emphasis: eq.part === 2 });
+    $("progress").textContent = eq.id + " of " + EQS.length;
+    $("progress").setAttribute("aria-label", "Equation " + eq.id + " of " + EQS.length);
+    $("back").disabled = state.current === 0;
+    $("next").disabled = state.current === EQS.length - 1 || !isUnlocked(state.current + 1);
 
-  $("x-form").addEventListener("submit", function (e) {
-    e.preventDefault();
-    var eq = EQS[state.current], r = rec(eq);
-    if (step(eq, r) !== "guess" || seedDue(eq, r) || travel) return;
-    var res = F.readGuess(eq, r.guesses, input.value);
-    if (!res.ok) { $("x-msg").textContent = res.message; input.focus(); input.select(); return; }
-    $("x-msg").textContent = "";
-    addGuess(eq, r, res.value, res.style, false);
-  });
-  input.addEventListener("input", function () {
-    showCue("");
-    var p = E.parseNumber(input.value);
-    $("x-msg").textContent = !p.ok && p.partial && input.value.trim() !== "" ? T.notNumberYet : "";
-  });
+    var building = st === "build";
+    $("palettes").hidden = !(building && eq.built);
+    ex.setLocked(building || st === "part3");
+    ex.setFlicker(st === "part3");
+    ex.show(eq, r.model, { build: building, x: building ? undefined : (r.positions.length ? undefined : E.frac(0)), style: "int" });
+    var f = drawPrompt(eq, r);
+    if (focus && f && $("coach").hidden) f.focus();
+  }
 
   /* ---------- navigation ---------- */
 
-  function go(delta) {
-    var i = state.current + delta;
-    if (i < 0 || i >= EQS.length || travel) return;
-    if (delta > 0 && !isUnlocked(i)) return;
+  function go(d) {
+    var i = state.current + d;
+    if (i < 0 || i >= EQS.length) return;
+    if (d > 0 && !isUnlocked(i)) return;
     state.current = i;
-    save();
-    render({ focus: true });
+    buildMsg = { text: "", side: null };
+    enterStep(EQS[i], rec(EQS[i]), true);
   }
   $("back").addEventListener("click", function () { go(-1); });
   $("next").addEventListener("click", function () { go(1); });
   document.addEventListener("keydown", function (e) {
     if (!$("coach").hidden) { if (e.key === "Escape") endCoach(); return; }
-    if (e.key === "Escape") { toggleSortPanel(false); return; }
     if (e.ctrlKey || e.metaKey || e.altKey) return;
     var t = e.target;
-    if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA")) return;
+    if (t && (t.tagName === "INPUT" || t.getAttribute("role") === "slider")) return;
     if (e.key === "n" || e.key === "N") { if (!$("next").disabled) go(1); }
     if (e.key === "b" || e.key === "B") { if (!$("back").disabled) go(-1); }
   });
   $("start-over").addEventListener("click", function () {
-    if (!window.confirm("Start over? This clears all your guesses and answers on this computer.")) return;
-    try { localStorage.removeItem(KEY); } catch (e) { /* nothing saved */ }
-    state = blank();
-    render({ focus: true });
+    if (!window.confirm("Start over? This clears your work on this computer.")) return;
+    state = { current: 0, coachSeen: true, eqs: {} };
+    enterStep(EQS[0], rec(EQS[0]), true);
   });
 
   /* ---------- coach marks (equation 1, replayable with "?") ---------- */
 
   var COACH = [
     { target: function () { return $("eq-display"); }, text: "This is the equation: one side goes on each pan." },
-    { target: function () { return $("xbox-wrap"); }, text: "This box is x: it shows the value x has right now." },
-    { target: function () { return document.querySelector(".bon-pan[data-side=left] .bon-pieces") ? $("balance-box") : null; },
-      text: "The pans hold the two sides: a box for each x, a ball for each number." },
-    { target: function () { return document.querySelector(".bon-pan [data-shape=weight] circle"); },
-      text: function (el) { return "A green " + el.parentNode.getAttribute("data-label") + " ball adds that much weight to its pan."; } },
-    { target: function () { return $("nl"); }, text: "When you type a guess, the slider travels to it on this number line." },
-    { target: function () { return $("table-box"); }, text: "Each guess goes in this table, with the two sides and which side is heavier." }
+    { target: function () { return $("palettes").hidden ? null : $("palettes"); }, text: "Click these buttons to build each side." },
+    { target: function () { return $("balance-box"); }, text: "The pans hold the two sides of the equation." },
+    { target: function () { return $("xbox"); }, text: "This is x: every box on the pans is the same size as this one." },
+    { target: function () { return $("vslider"); }, text: "Slide x up and down: heavier at the top, lighter at the bottom." },
+    { target: function () { return $("readout"); }, text: "Here are the two totals, with a sign that shows which side is heavier." }
   ];
-  var coachAt = -1, coachReturn = null;
-
-  function startCoach() {
-    coachReturn = document.activeElement;
-    coachAt = -1;
-    $("coach").hidden = false;
-    coachNext();
-  }
+  var coachAt = -1, coachBack = null;
+  function startCoach() { coachBack = document.activeElement; coachAt = -1; $("coach").hidden = false; coachNext(); }
   function endCoach() {
-    $("coach").hidden = true;
-    coachAt = -1;
-    state.coachSeen = true; save();
-    var eq = EQS[state.current];
-    var f = drawPrompt(eq, rec(eq));
-    (f && !f.disabled ? f : coachReturn && coachReturn.focus ? coachReturn : input).focus();
+    $("coach").hidden = true; state.coachSeen = true;
+    var f = drawPrompt(EQS[state.current], rec(EQS[state.current]));
+    if (f) f.focus(); else if (coachBack && coachBack.focus) coachBack.focus();
   }
   function coachNext() {
     coachAt++;
     while (coachAt < COACH.length && !COACH[coachAt].target()) coachAt++;
     if (coachAt >= COACH.length) { endCoach(); return; }
-    var c = COACH[coachAt], target = c.target();
-    var rect = target.getBoundingClientRect(), pad = 8;
-    var ring = $("coach-ring");
+    var c = COACH[coachAt], rect = c.target().getBoundingClientRect(), pad = 8, ring = $("coach-ring");
     ring.style.left = (rect.left - pad) + "px"; ring.style.top = (rect.top - pad) + "px";
     ring.style.width = (rect.width + 2 * pad) + "px"; ring.style.height = (rect.height + 2 * pad) + "px";
-    $("coach-text").textContent = typeof c.text === "function" ? c.text(target) : c.text;
+    $("coach-text").textContent = c.text;
     $("coach-count").textContent = (coachAt + 1) + " of " + COACH.length;
-    var last = COACH.slice(coachAt + 1).every(function (k) { return !k.target(); });
-    $("coach-next").textContent = last ? "Done" : "Next";
-    var bubble = $("coach-bubble");
-    bubble.style.left = "0px"; bubble.style.top = "0px";
-    var bw = bubble.offsetWidth, bh = bubble.offsetHeight;
+    $("coach-next").textContent = COACH.slice(coachAt + 1).every(function (k) { return !k.target(); }) ? "Done" : "Next";
+    var bub = $("coach-bubble");
+    bub.style.left = "0px"; bub.style.top = "0px";
+    var bw = bub.offsetWidth, bh = bub.offsetHeight;
     var below = rect.bottom + pad + 12, above = rect.top - pad - 12 - bh;
     var top = below + bh <= innerHeight - 8 ? below : above >= 8 ? above : Math.max(8, innerHeight - bh - 8);
-    var left = Math.min(innerWidth - bw - 12, Math.max(12, rect.left + rect.width / 2 - bw / 2));
-    bubble.style.left = left + "px"; bubble.style.top = top + "px";
+    var left = rect.right + 16 + bw <= innerWidth - 8 && rect.height > innerHeight * 0.5 ? rect.right + 16 :
+      Math.min(innerWidth - bw - 12, Math.max(12, rect.left + rect.width / 2 - bw / 2));
+    if (rect.height > innerHeight * 0.5) top = Math.max(8, Math.min(innerHeight - bh - 8, rect.top + rect.height / 2 - bh / 2));
+    bub.style.left = left + "px"; bub.style.top = top + "px";
     $("coach-next").focus();
   }
   $("coach-next").addEventListener("click", coachNext);
   $("coach-skip").addEventListener("click", endCoach);
-  $("help").addEventListener("click", function () { if (!travel) startCoach(); });
+  $("help").addEventListener("click", startCoach);
 
-  /* ---------- draw everything ---------- */
-
-  var drawnEq = null;
-
-  function render(how) {
-    how = how || {};
-    var eq = EQS[state.current], r = rec(eq), st = step(eq, r);
-    var newEq = drawnEq !== eq.id;
-    drawnEq = eq.id;
-
-    document.body.setAttribute("data-step", st === "part3" ? "guess" : st);
-    document.body.setAttribute("data-part", eq.part);
-    Array.prototype.forEach.call($("steps").children, function (li) {
-      var on = li.getAttribute("data-step") === (st === "part3" ? "answer" : st);
-      if (on) li.setAttribute("aria-current", "step"); else li.removeAttribute("aria-current");
-    });
-
-    $("eq-number").textContent = eq.id;
-    BON.renderEquation($("eq-display"), eq, { emphasis: eq.part === 2 });
-
-    $("progress").textContent = eq.id + " of " + EQS.length;
-    $("progress").setAttribute("aria-label", "Equation " + eq.id + " of " + EQS.length);
-    $("back").disabled = state.current === 0;
-    $("next").disabled = state.current === EQS.length - 1 || !isUnlocked(state.current + 1);
-
-    if (newEq) drawTicks(eq);
-    drawMarkers(eq, r);
-    drawTable(eq, r);
-    drawSortBar();
-
-    // the current x: the last guess, landed (unless a guess was just made, which already set it)
-    if (newEq || !how.keepX) {
-      var last = r.guesses[r.guesses.length - 1];
-      cur = last ? { x: last.x, style: last.style, pos: posOf(last.x), landed: true } : { x: null, style: "int", pos: 0, landed: false };
-      slider.classList.toggle("is-arrived", !!last);
-    }
-    showX(eq);
-
-    var guessing = st === "guess" && !seedDue(eq, r);
-    input.disabled = !guessing;
-    $("x-try").disabled = !guessing;
-    if (!guessing) $("x-msg").textContent = "";
-    slider.disabled = true; // unlocks after five guesses and a prediction (Stage B)
-    $("slider-lock").hidden = !slider.disabled || eq.part === 3;
-    $("x-area").classList.toggle("is-part3", st === "part3");
-
-    var focusTarget = drawPrompt(eq, r);
-    if (how.focus && focusTarget && !focusTarget.disabled && $("coach").hidden) focusTarget.focus();
-
-    // equations 1-3: the first given guess plays as soon as the equation opens
-    if (st === "guess" && r.guesses.length === 0 && seedDue(eq, r) && !travel) {
-      addGuess(eq, r, F.seedsFor(eq)[0], "int", true);
-    }
-  }
-
-  window.addEventListener("resize", function () {
-    var eq = EQS[state.current];
-    drawTicks(eq); drawMarkers(eq, rec(eq)); drawXBox(cur.x, cur.style);
-  });
-
-  render();
+  enterStep(EQS[state.current], rec(EQS[state.current]), true);
+  if (state.current === 0 && !state.coachSeen) startCoach();
 })();

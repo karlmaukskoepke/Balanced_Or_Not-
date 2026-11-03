@@ -4,62 +4,78 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Balance Test Page</title>
-  <link rel="stylesheet" href="css/style.css?v=v21a">
+  <link rel="stylesheet" href="css/style.css?v=v3s1">
 </head>
-<body>
-  <header class="topbar">
-    <h1>What Makes It Balance? <span class="topbar-sub">Balance test page</span></h1>
-    <a class="topbar-link" href="teachers.html">Printable sheets</a>
+<body class="app" data-step="slide">
+  <header class="bar">
+    <span class="bar-title">What Makes It Balance?</span>
+    <span class="bar-progress">Test page</span>
+    <span class="bar-tools">
+      <a href="teachers.html">Teachers</a>
+      <a href="index.html">The activity</a>
+    </span>
   </header>
 
-  <main class="test-page">
-    <nav class="eq-picker" aria-label="Choose an equation">
-      <span class="eq-picker-label" id="picker-label">Equation</span>
-      <div class="eq-picker-buttons" id="picker" role="group" aria-labelledby="picker-label"></div>
-    </nav>
-
-    <div class="eq-header">
-      <span class="eq-number" id="eq-number" aria-hidden="true">1</span>
-      <h2 class="eq-display" id="eq-display"></h2>
-    </div>
-
-    <div class="balance-wrap">
-      <svg id="balance" class="balance" aria-describedby="readout-result"></svg>
-    </div>
-
-    <section class="controls" aria-label="Choose a value for x">
-      <div class="x-entry">
+  <main class="stage">
+    <section class="col-slide" id="col-slide" aria-label="Slider for x">
+      <div class="vs-host" id="vslider"></div>
+      <form class="x-form" id="x-form" autocomplete="off">
         <label for="x-input" class="x-label"><span class="eqn-x">x</span> =</label>
-        <input id="x-input" class="x-input" type="text" inputmode="decimal" autocomplete="off"
-               spellcheck="false" aria-describedby="x-help" value="0">
-        <span class="x-help" id="x-help">Arrow keys: up/down by 1, with Shift by 0.01</span>
+        <input id="x-input" class="x-input" type="text" inputmode="text" spellcheck="false" autocomplete="off">
+        <button type="submit" class="btn btn-primary" id="x-go">Go</button>
+      </form>
+      <p class="msg" id="x-msg" aria-live="polite"></p>
+    </section>
+
+    <section class="col-center" aria-label="Equation and balance">
+      <div class="eq-area">
+        <span class="eq-number" id="eq-number" aria-hidden="true"></span>
+        <h1 class="eq-display" id="eq-display"></h1>
       </div>
-      <p class="x-error" id="x-error" role="alert"></p>
-      <div class="slider-row">
-        <span class="slider-end" id="slider-min">−10</span>
-        <input id="x-slider" class="x-slider" type="range" min="-10" max="10" step="0.01" value="0"
-               aria-label="Slide to choose x">
-        <span class="slider-end" id="slider-max">10</span>
+      <div class="palettes" id="palettes" hidden>
+        <div class="palette" data-side="left" role="group" aria-label="Build the left side">
+          <button type="button" class="btn pbtn" data-act="x">x</button>
+          <button type="button" class="btn pbtn" data-act="plus">+1</button>
+          <button type="button" class="btn pbtn" data-act="minus">&minus;1</button>
+          <button type="button" class="linkish pclear" data-act="clear">clear side</button>
+        </div>
+        <div class="palette" data-side="right" role="group" aria-label="Build the right side">
+          <button type="button" class="btn pbtn" data-act="x">x</button>
+          <button type="button" class="btn pbtn" data-act="plus">+1</button>
+          <button type="button" class="btn pbtn" data-act="minus">&minus;1</button>
+          <button type="button" class="linkish pclear" data-act="clear">clear side</button>
+        </div>
+      </div>
+      <div class="balance-box" id="balance-box">
+        <svg id="balance" class="balance"></svg>
+      </div>
+      <div class="readout" id="readout">
+        <span class="tot" id="tot-left" aria-label="Left total"></span>
+        <span class="rel" id="rel" aria-hidden="true"></span>
+        <span class="tot" id="tot-right" aria-label="Right total"></span>
+        <span class="sr-only" id="rel-sr" aria-live="polite"></span>
       </div>
     </section>
 
-    <section class="readout" aria-label="Substitution">
-      <p class="readout-line"><span class="readout-side">Left side:</span> <span id="readout-left"></span></p>
-      <p class="readout-line"><span class="readout-side">Right side:</span> <span id="readout-right"></span></p>
-      <p class="readout-result" id="readout-result" aria-live="polite"></p>
+    <section class="col-right" aria-label="Pick an equation">
+      <div class="prompt">
+        <p class="prompt-q">Pick an equation</p>
+        <div class="picker" id="picker" role="group" aria-label="Equations"></div>
+        <p class="prompt-help">Every equation is pre-built here and the slider is always on. For checking the balance only.</p>
+        <p class="prompt-help" id="test-note"></p>
+      </div>
     </section>
-
-    <details class="test-options">
-      <summary>Test options</summary>
-      <label><input type="checkbox" id="opt-reduced"> Pretend "reduce motion" is on (the beam snaps instead of easing)</label>
-    </details>
   </main>
+  <div class="xbox" id="xbox"><span></span></div>
 
-  <script src="js/exact.js?v=v21a"></script>
-  <script src="js/equations.js?v=v21a"></script>
-  <script src="js/model.js?v=v21a"></script>
-  <script src="js/equation-view.js?v=v21a"></script>
-  <script src="js/balance.js?v=v21a"></script>
-  <script src="js/balance-test.js?v=v21a"></script>
+  <script src="js/exact.js?v=v3s1"></script>
+  <script src="js/equations.js?v=v3s1"></script>
+  <script src="js/model.js?v=v3s1"></script>
+  <script src="js/flow.js?v=v3s1"></script>
+  <script src="js/equation-view.js?v=v3s1"></script>
+  <script src="js/balance.js?v=v3s1"></script>
+  <script src="js/vslider.js?v=v3s1"></script>
+  <script src="js/explore.js?v=v3s1"></script>
+  <script src="js/balance-test.js?v=v3s1"></script>
 </body>
 </html>

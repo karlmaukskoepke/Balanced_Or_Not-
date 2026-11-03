@@ -76,7 +76,35 @@
     return (cmp.heavier === "left" ? "Left" : "Right") + " side is heavier by " + E.fmtValue(cmp.diff, style);
   }
 
+  /* ---------- the model on the pans (spec v3): k boxes per x-term and one net constant ---------- */
+
+  /* A side as the balance draws it: x-term groups in written order and the net constant. */
+  function sideModel(terms) {
+    var groups = [], c = 0, constFirst = false;
+    terms.forEach(function (t, i) {
+      if (t.kind === "x") groups.push(t.coef);
+      else { c += t.value; if (i === 0) constFirst = true; }
+    });
+    return { groups: groups, c: c, constFirst: constFirst };
+  }
+  function modelFromEquation(eq) { return { left: sideModel(eq.left), right: sideModel(eq.right) }; }
+  function emptyModel() { return { left: { groups: [0], c: 0, constFirst: false }, right: { groups: [0], c: 0, constFirst: false } }; }
+  function xCount(side) { return side.groups.reduce(function (a, k) { return a + k; }, 0); }
+  function modelSideValue(side, x) { return E.fAdd(E.fMul(E.frac(xCount(side)), x), E.frac(side.c)); }
+  function compareModel(model, x) {
+    var l = modelSideValue(model.left, x), r = modelSideValue(model.right, x), c = E.fCmp(l, r);
+    return { left: l, right: r, heavier: c > 0 ? "left" : c < 0 ? "right" : "balanced",
+      diff: E.fAbs(E.fSub(l, r)), signedDiff: E.fSub(l, r) };
+  }
+  /* Does a built side match the equation's side (same number of x's, same net number)? */
+  function sideMatches(terms, side) {
+    var m = sideModel(terms);
+    return xCount(m) === xCount(side) && m.c === side.c;
+  }
+
   BON.model = {
+    sideModel: sideModel, modelFromEquation: modelFromEquation, emptyModel: emptyModel, xCount: xCount,
+    modelSideValue: modelSideValue, compareModel: compareModel, sideMatches: sideMatches,
     sideValue: sideValue, compare: compare,
     sidePieces: sidePieces, sideText: sideText, equationText: equationText,
     substitutionLine: substitutionLine, resultText: resultText

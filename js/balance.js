@@ -1,24 +1,24 @@
 /*
- * The pan balance, drawn in SVG (spec v2, section 4).
+ * The pan balance, drawn as layered SVG (spec v3, section 6).
  *
  *   var view = BON.createBalance(svgElement);
- *   view.update({ eq, x: {n,d} or null, style: "decimal", tilt: "live" | "level" });
- *   x null draws plain boxes marked "x" (no value yet). tilt "level" holds the beam flat.
+ *   view.update({ eq, model, x: {n,d} or null, style, tilt: "live" | "level" });
+ *     model: { left: { groups: [2], c: 3, constFirst: false }, right: {...} }  (see BON.model.sideModel)
+ *     x null draws plain "x" boxes (no value yet, e.g. during Build).
  *
- * Picture rules:
- * - Each x-term with coefficient k is k boxes showing the value of x. Area ∝ |x|, with a floor size.
- * - x = 0: floor-size boxes, dashed outline, shaded, labelled "0". Boxes never vanish.
- * - x < 0: each box floats on a string, labelled with the negative value.
- * - Positive numbers: green circles "+3"; negative numbers: red balloons "−6" on strings. Area ∝ |value|.
- * - Floating pieces hover beside the OUTER edge of their pan (tethered to the pan end), so they never
- *   reach the beam and the balance can be short and wide.
- * - Both pans share one size scale.
- * - Under each pan: the side's expression in colour (x-terms blue, + numbers green, − numbers red)
- *   and below it the side's total in a box, both moving up and down with the pan but never rotating.
- *   (No substitution line, spec v2.1.)
- * - trueSide(x) / unitPx() let the page draw the x-box beside the balance at the same scale as the pan boxes.
- * - Tilt is scaled per equation: the largest difference over the slider range reaches the cap, any
- *   nonzero difference shows at least MIN_TILT, never-balanced equations hold 60% of the cap.
+ * Layers, back to front: stand (base and post) · back layer (back chains, back balloons) · beam (rotates
+ * about the pivot) · pans (follow the beam ends, stay level) and the pieces on them · front chains ·
+ * front layer (front balloons) · the expression under each pan.
+ *
+ * One size rule for every piece: s(v) = S1 · sqrt(|v|), never below FLOOR. A box of value v has side s(v);
+ * a ball or balloon of value v has diameter s(v). The x-box beside the slider uses the same rule (sizeOf),
+ * so on screen it matches the pan boxes exactly. Pans are wide enough for five boxes at |x| = 6 plus a ball.
+ *
+ * Each side holds k boxes per x-term (in written order, split terms as separate groups) and ONE net constant:
+ * a green ball (positive) or a red balloon (negative). Negative x turns every box into a balloon.
+ * Balloons rise straight up from the pan rim on a visible string, alternating behind and in front of the
+ * balance; a single balloon sits in front. String lengths are capped so no balloon leaves the drawing.
+ *
  * Sizes and angles are drawing-only numbers; every value shown as text comes from exact fractions.
  */
 (function (root) {
@@ -26,39 +26,34 @@
   var BON = root.BON || (root.BON = {});
   var NS = "http://www.w3.org/2000/svg";
 
-  // Geometry (SVG user units; viewBox is 0 0 VB_W VB_H)
-  var VB_W = 1000, VB_H = 470;
-  var PIVOT = { x: 500, y: 86 };
-  var BEAM_HALF = 200;        // pivot to the point a pan hangs from
-  var HANG = 190;             // beam end down to the top of the pan
-  var PAN_HALF = 130;
-  var WEIGHT_BAND = { w: 244, h: 150 };                         // on the pan, growing upward
-  var FLOAT_ZONE = { inner: PAN_HALF + 12, w: 152, top: -152, h: 150 }; // beside the pan's outer edge
+  var VB_W = 900, VB_H = 430;
+  var PIVOT = { x: 450, y: 150 };
+  var BEAM_HALF = 255, HANG = 120, PAN_HALF = 185;
+  var S1 = 24, FLOOR = 30, UNKNOWN_SIDE = 36;
+  var GAP_IN_GROUP = 4, GAP_BETWEEN = 10;
   var MIN_TILT = 4, MAX_TILT = 18, NEVER_SHARE = 0.6;
-  var UNIT_SIDE = 46;         // side of a box worth 1 at full scale
-  var FLOOR_SIDE = 70;        // smallest box side (fits a label like "−1.33")
-  var FLOOR_R = 36;           // smallest circle/balloon radius
-  var GAP_IN_TERM = 6, GAP_BETWEEN_TERMS = 18, ROW_GAP = 8;
-  var FOLLOW_MS = 70;         // the beam closes most of the gap to its target in about this time
-  var EXPR_DY = 58, TOTAL_TOP = 68, TOTAL_H = 52;
+  var FOLLOW_MS = 70;
+  var TOP_MARGIN = 4;
+  var EXPR_DY = 62;
 
-  var COLORS = {
-    blue: "#1F5FBF", boxFill: "#E4ECFA", zeroFill: "#EDEDED", zeroHatch: "#C9C9C9",
-    green: "#1E7A36", red: "#C0262D", ink: "#111111", string: "#333333", hanger: "#9AA5B1", metal: "#3B4652"
+  var C = {
+    blue: "#1F5FBF", green: "#1E7A36", red: "#C0262D", ink: "#111111", string: "#4A4A4A", chain: "#8A96A3"
   };
 
-  /* A, B, C, D of Ax + B = Cx + D (drawing only; the page never shows these letters). */
+  /* ---------- sizes ---------- */
+
+  /* Side of a box (or diameter of a ball/balloon) for value v, in drawing units. */
+  function sizeOf(v) { return Math.max(FLOOR, S1 * Math.sqrt(Math.abs(v))); }
+  function fv(f) { return f.n / f.d; }
+
+  /* ---------- tilt (reused from v2: scaled per equation) ---------- */
+
   function abcd(eq) {
     var o = { A: 0, B: 0, C: 0, D: 0 };
     eq.left.forEach(function (t) { if (t.kind === "x") o.A += t.coef; else o.B += t.value; });
     eq.right.forEach(function (t) { if (t.kind === "x") o.C += t.coef; else o.D += t.value; });
     return o;
   }
-
-  /*
-   * Degrees of tilt for the equation at a signed difference (left − right, a fraction). Negative = left side down.
-   * Scaled so the largest difference across the slider range reaches MAX_TILT.
-   */
   function tiltFor(eq, signedDiff) {
     if (signedDiff.n === 0) return 0;
     var k = abcd(eq), sign = signedDiff.n > 0 ? -1 : 1, t;
@@ -67,11 +62,12 @@
       var lo = eq.sliderRange[0], hi = eq.sliderRange[1];
       var f = function (x) { return Math.abs((k.A - k.C) * x + (k.B - k.D)); };
       var maxDiff = Math.max(f(lo), f(hi)) || 1;
-      t = MAX_TILT * Math.abs(signedDiff.n / signedDiff.d) / maxDiff;
-      t = Math.min(MAX_TILT, Math.max(MIN_TILT, t));
+      t = Math.min(MAX_TILT, Math.max(MIN_TILT, MAX_TILT * Math.abs(signedDiff.n / signedDiff.d) / maxDiff));
     }
     return sign * t;
   }
+
+  /* ---------- SVG helpers ---------- */
 
   function el(name, attrs, parent) {
     var e = document.createElementNS(NS, name);
@@ -79,186 +75,177 @@
     if (parent) parent.appendChild(e);
     return e;
   }
-
-  /* Rough width of bold sans text, to keep labels inside their shapes. */
+  function clear(g) { while (g.firstChild) g.removeChild(g.firstChild); }
   function textWidth(s, size) {
     var w = 0;
     for (var i = 0; i < s.length; i++) {
       var ch = s.charAt(i);
-      w += ch === "." || ch === " " ? 0.3 : ch === "(" || ch === ")" ? 0.36 : ch === "/" ? 0.3 :
-        ch === "+" || ch === "=" || ch === BON.MINUS ? 0.6 : 0.58;
+      w += ch === "." || ch === " " ? 0.3 : ch === "/" ? 0.32 : ch === "+" || ch === BON.MINUS ? 0.6 : 0.58;
     }
     return w * size;
   }
-  function fitFont(label, room, preferred) {
-    var size = preferred, w = textWidth(label, size);
-    if (w > room) size = size * room / w;
-    return Math.max(18, size);
+  function fitFont(label, room, pref) {
+    var w = textWidth(label, pref);
+    return Math.max(10, w > room ? pref * room / w : pref);
   }
 
-  /* ---------- turning a side into pieces ---------- */
+  /* ---------- pieces for one side ---------- */
 
-  function isBox(it) { return /box$/.test(it.shape); }
-
-  function sideItems(terms, x, style) {
-    var items = [], E = BON.exact;
-    var sign = x ? E.fSign(x) : 0;
-    terms.forEach(function (t, termIndex) {
-      if (t.kind === "x") {
-        for (var k = 0; k < t.coef; k++) {
-          items.push({
-            term: termIndex,
-            shape: !x ? "unknown-box" : sign > 0 ? "box" : sign === 0 ? "zero-box" : "float-box",
-            band: x && sign < 0 ? "float" : "weight",
-            units: x ? Math.abs(E.fToFloat(x)) : 0,
-            label: x ? E.fmtValue(x, style) : "x"
-          });
-        }
-      } else if (t.value !== 0) {
-        var pos = t.value > 0;
-        items.push({
-          term: termIndex, shape: pos ? "weight" : "balloon", band: pos ? "weight" : "float",
-          units: Math.abs(t.value), label: (pos ? "+" : BON.MINUS) + Math.abs(t.value)
-        });
+  /*
+   * Returns { weights: [...], floats: [...] } with sizes; weights sit on the pan in written order,
+   * floats are balloons. Each piece: { shape, label, size, group }.
+   */
+  function sidePieces(side, x, style) {
+    var E = BON.exact, sign = x ? E.fSign(x) : 0;
+    var weights = [], floats = [];
+    var xLabel = x ? E.fmtValue(x, style) : "x";
+    function pushX(group, k) {
+      for (var i = 0; i < k; i++) {
+        var p = { group: group, label: xLabel, value: x ? fv(x) : null };
+        if (!x) { p.shape = "unknown-box"; p.size = UNKNOWN_SIDE; weights.push(p); }
+        else if (sign > 0) { p.shape = "box"; p.size = sizeOf(fv(x)); weights.push(p); }
+        else if (sign === 0) { p.shape = "zero-box"; p.size = FLOOR; weights.push(p); }
+        else { p.shape = "x-balloon"; p.size = sizeOf(fv(x)); floats.push(p); }
       }
-    });
-    return items;
+    }
+    function pushC(group) {
+      if (!side.c) return;
+      var p = { group: group, value: side.c, label: (side.c > 0 ? "+" : BON.MINUS) + Math.abs(side.c), size: sizeOf(side.c) };
+      p.shape = side.c > 0 ? "ball" : "balloon";
+      (side.c > 0 ? weights : floats).push(p);
+    }
+    var g = 0;
+    if (side.constFirst) pushC(g++);
+    side.groups.forEach(function (k) { pushX(g++, k); });
+    if (!side.constFirst) pushC(g++);
+    return { weights: weights, floats: floats };
   }
 
-  function sizeItem(it, f, floorK) {
-    var FS = FLOOR_SIDE * floorK, FR = FLOOR_R * floorK;
-    var area = UNIT_SIDE * UNIT_SIDE * it.units * f * f;
-    if (isBox(it)) {
-      var side = it.shape === "zero-box" || it.shape === "unknown-box" ? FS : Math.max(FS, Math.sqrt(area));
-      it.w = side; it.h = side;
+  /* Place pieces in pan coordinates (0,0 = centre of the pan rim; y grows downward). */
+  function layoutSide(side, x, style, where) {
+    var ps = sidePieces(side, x, style);
+    var maxW = 2 * PAN_HALF - 8, rows = [], row = null;
+    ps.weights.forEach(function (p, i) {
+      var gap = i === 0 ? 0 : (ps.weights[i - 1].group === p.group ? GAP_IN_GROUP : GAP_BETWEEN);
+      if (!row || row.w + gap + p.size > maxW) { row = { items: [], gaps: [], w: 0, h: 0 }; rows.push(row); gap = 0; }
+      row.items.push(p); row.gaps.push(gap); row.w += gap + p.size; row.h = Math.max(row.h, p.size);
+    });
+    var y = 0;
+    rows.forEach(function (r) {
+      var px = -r.w / 2;
+      r.items.forEach(function (p, k) { px += r.gaps[k]; p.cx = px + p.size / 2; p.cy = y - p.size / 2; px += p.size; });
+      y -= r.h + 4;
+    });
+    var weightTop = rows.length ? -y - 4 : 0; // height of the stack of weights
+
+    // balloons: straight up from evenly spaced points on the rim; alternate string lengths and layers
+    // tether points: in the open part of the rim, outside the weights, when there is room; otherwise across the rim
+    var n = ps.floats.length, out = where === "left" ? -1 : 1;
+    var halfW = rows.length ? rows[0].w / 2 : 0, rimEnd = PAN_HALF - 22, open = rimEnd - halfW - 10;
+    var spots = [];
+    var need = ps.floats.reduce(function (t, p) { return t + p.size * 0.55; }, 0); // staggered heights let them overlap a little
+    if (n && open >= need) {
+      for (var j = 0; j < n; j++) spots.push(out * (rimEnd - (n === 1 ? 0 : open * j / (n - 1))));
+      if (n > 1) spots.reverse();
     } else {
-      var r = Math.max(FR, Math.sqrt(area / Math.PI));
-      it.r = r;
-      if (it.shape === "balloon") { it.rx = r * 0.9; it.ry = r / 0.9; it.w = 2 * it.rx; it.h = 2 * it.ry + 12; }
-      else { it.w = 2 * r; it.h = 2 * r; }
+      var span = 2 * PAN_HALF - 50;
+      for (var k2 = 0; k2 < n; k2++) spots.push(n === 1 ? 0 : -span / 2 + span * (k2 + 0.5) / n);
     }
-  }
-
-  /* Shelf packing: in written order, wrapping into rows. */
-  function pack(items, maxW) {
-    var rows = [], row = null;
-    items.forEach(function (it, i) {
-      var gap = i === 0 ? 0 : (items[i - 1].term === it.term ? GAP_IN_TERM : GAP_BETWEEN_TERMS);
-      if (!row || (row.w + gap + it.w > maxW && row.items.length)) {
-        row = { items: [], w: 0, h: 0, gaps: [] }; rows.push(row); gap = 0;
-      }
-      row.gaps.push(gap); row.items.push(it);
-      row.w += gap + it.w; row.h = Math.max(row.h, it.h);
+    var maxRise = (PIVOT.y + HANG - BEAM_HALF * Math.sin(MAX_TILT * Math.PI / 180)) - TOP_MARGIN; // pan raised highest
+    ps.floats.forEach(function (p, i) {
+      p.cx = spots[i];
+      // room above the weights before the balloon's top would leave the drawing (with the pan at its highest)
+      var room = maxRise - weightTop - 8 - 6 - p.size;
+      var string = Math.max(12, Math.min(i % 2 === 0 ? 26 : 72, room));
+      p.stringTop = -(weightTop + 8 + string);   // where the string meets the balloon
+      p.cy = p.stringTop - p.size / 2 - 6;      // knot below the balloon
+      p.layer = n === 1 ? "front" : (i % 2 === 0 ? "back" : "front");
     });
-    var h = 0, w = 0;
-    rows.forEach(function (r, i) { h += r.h + (i ? ROW_GAP : 0); w = Math.max(w, r.w); });
-    return { rows: rows, h: h, w: w };
-  }
-
-  /* One shared scale that fits every band on both pans; then place the pieces (pan coordinates). */
-  function layout(eq, x, style) {
-    var sides = { left: sideItems(eq.left, x, style), right: sideItems(eq.right, x, style) };
-    // shrink everything together; if even floor-size pieces don't fit (many floating boxes), shrink the floor a little
-    var f = 1, floorK = 1, result, ok = false;
-    for (var tries = 0; tries < 130 && !ok; tries++) {
-      if (tries === 50) floorK = 0.86;   // f keeps shrinking: the natural sizes were already too big
-      if (tries === 75) floorK = 0.72;
-      if (tries === 100) floorK = 0.6;
-      ok = true;
-      result = {};
-      ["left", "right"].forEach(function (s) {
-        var all = sides[s];
-        all.forEach(function (it) { sizeItem(it, f, floorK); });
-        var weights = pack(all.filter(function (it) { return it.band === "weight"; }), WEIGHT_BAND.w);
-        var floats = pack(all.filter(function (it) { return it.band === "float"; }), FLOAT_ZONE.w);
-        if (weights.h > WEIGHT_BAND.h || weights.w > WEIGHT_BAND.w) ok = false;
-        if (floats.h > FLOAT_ZONE.h || floats.w > FLOAT_ZONE.w) ok = false;
-        result[s] = { items: all, weights: weights, floats: floats };
-      });
-      if (!ok) f *= 0.93;
-    }
-    result.scale = f; result.floorK = floorK;
-    ["left", "right"].forEach(function (s) {
-      var y = 0;
-      result[s].weights.rows.forEach(function (row, ri) {
-        var px = -row.w / 2;
-        if (ri) y -= ROW_GAP;
-        row.items.forEach(function (it, k) {
-          px += row.gaps[k];
-          it.x = px + it.w / 2; it.y = y - it.h / 2;
-          px += it.w;
-        });
-        y -= row.h;
-      });
-      // floating pieces: outside the pan, rows from the top of the zone, packed toward the pan
-      var out = s === "left" ? -1 : 1, top = FLOAT_ZONE.top;
-      result[s].floats.rows.forEach(function (row) {
-        var px = 0; // distance from the zone's inner edge
-        row.items.forEach(function (it, k) {
-          px += row.gaps[k];
-          it.x = out * (FLOAT_ZONE.inner + px + it.w / 2);
-          it.y = top + it.h / 2;
-          px += it.w;
-        });
-        top += row.h + ROW_GAP;
-      });
-    });
-    return result;
+    return { weights: ps.weights, floats: ps.floats, weightTop: weightTop };
   }
 
   /* ---------- drawing ---------- */
 
-  function drawItem(it, g, strings, side) {
-    var item = el("g", { "data-shape": it.shape, "data-label": it.label }, g);
-    if (it.band === "float") {
-      // string from the piece's bottom to the pan's outer end
-      var bottom = it.shape === "balloon" ? it.y - 6 + it.ry + 9 : it.y + it.h / 2;
-      var endX = (side === "left" ? -1 : 1) * (PAN_HALF - 4);
-      el("path", { d: "M" + it.x + "," + bottom + " Q" + it.x + "," + (bottom + 30) + " " + endX + ",0",
-        fill: "none", stroke: COLORS.string, "stroke-width": 2.5, "data-string": "1" }, strings);
+  function defs(svg) {
+    var d = el("defs", {}, svg);
+    function lin(id, stops, x2, y2) {
+      var g = el("linearGradient", { id: id, x1: 0, y1: 0, x2: x2 === undefined ? 0 : x2, y2: y2 === undefined ? 1 : y2 }, d);
+      stops.forEach(function (s) { el("stop", { offset: s[0], "stop-color": s[1] }, g); });
     }
-    var fontPref;
-    if (isBox(it)) {
-      var zero = it.shape === "zero-box", unknown = it.shape === "unknown-box";
-      el("rect", {
-        x: it.x - it.w / 2, y: it.y - it.h / 2, width: it.w, height: it.h, rx: 4,
-        fill: zero ? "url(#bon-hatch)" : it.shape === "float-box" ? "#FFFFFF" : COLORS.boxFill,
-        stroke: COLORS.blue, "stroke-width": 4, "stroke-dasharray": zero ? "9 7" : undefined
-      }, item);
-      fontPref = Math.min(40, Math.max(26, it.w * 0.42));
-      el("text", { x: it.x, y: it.y, "font-size": unknown ? 42 : fitFont(it.label, it.w - 10, fontPref),
-        fill: unknown ? COLORS.blue : COLORS.ink, "class": "bon-label" + (unknown ? " bon-label-x" : "") }, item)
-        .textContent = it.label;
-    } else if (it.shape === "weight") {
-      el("circle", { cx: it.x, cy: it.y, r: it.r, fill: COLORS.green, stroke: "#14501F", "stroke-width": 2 }, item);
-      fontPref = Math.min(40, Math.max(26, it.r * 0.8));
-      el("text", { x: it.x, y: it.y, "font-size": fitFont(it.label, it.r * 1.7, fontPref), fill: "#FFFFFF",
-        "class": "bon-label" }, item).textContent = it.label;
-    } else if (it.shape === "balloon") {
-      var by = it.y - 6;
-      el("ellipse", { cx: it.x, cy: by, rx: it.rx, ry: it.ry, fill: COLORS.red, stroke: "#7E1519", "stroke-width": 2 }, item);
-      el("path", { d: "M" + (it.x - 6) + "," + (by + it.ry + 9) + " L" + it.x + "," + (by + it.ry - 2) +
-        " L" + (it.x + 6) + "," + (by + it.ry + 9) + " Z", fill: "#7E1519" }, item);
-      el("ellipse", { cx: it.x - it.rx * 0.4, cy: by - it.ry * 0.45, rx: it.rx * 0.18, ry: it.ry * 0.12,
-        fill: "#FFFFFF", opacity: 0.45 }, item);
-      fontPref = Math.min(40, Math.max(26, it.rx * 0.8));
-      el("text", { x: it.x, y: by, "font-size": fitFont(it.label, it.rx * 1.7, fontPref), fill: "#FFFFFF",
-        "class": "bon-label" }, item).textContent = it.label;
+    function rad(id, stops) {
+      var g = el("radialGradient", { id: id, cx: "35%", cy: "30%", r: "75%" }, d);
+      stops.forEach(function (s) { el("stop", { offset: s[0], "stop-color": s[1] }, g); });
+    }
+    lin("bon-metal", [[0, "#7D8996"], [0.5, "#4A5562"], [1, "#2C343D"]]);
+    lin("bon-post", [[0, "#56616D"], [0.5, "#8995A2"], [1, "#3A444F"]], 1, 0);
+    lin("bon-box", [[0, "#F4F8FE"], [1, "#BFD1F0"]], 1, 1);
+    lin("bon-pan", [[0, "#9AA6B3"], [1, "#4A5562"]]);
+    rad("bon-ball", [[0, "#7FD49A"], [0.55, "#2E9A4E"], [1, "#145A28"]]);
+    rad("bon-balloon", [[0, "#FF9B9B"], [0.5, "#D6323C"], [1, "#8E141C"]]);
+    rad("bon-xballoon", [[0, "#FFFFFF"], [0.6, "#D7E4FA"], [1, "#9FB9E6"]]);
+    var hatch = el("pattern", { id: "bon-hatch", width: 8, height: 8, patternUnits: "userSpaceOnUse", patternTransform: "rotate(45)" }, d);
+    el("rect", { width: 8, height: 8, fill: "#EDEDED" }, hatch);
+    el("line", { x1: 0, y1: 0, x2: 0, y2: 8, stroke: "#C9C9C9", "stroke-width": 3 }, hatch);
+    var f = el("filter", { id: "bon-shadow", x: "-30%", y: "-30%", width: "160%", height: "160%" }, d);
+    el("feDropShadow", { dx: 0, dy: 2, stdDeviation: 2, "flood-color": "#000000", "flood-opacity": 0.3 }, f);
+  }
+
+  function label(g, p, cx, cy, size, color, italic) {
+    var t = el("text", { x: cx, y: cy, "font-size": italic ? Math.min(30, size * 0.7) : fitFont(p.label, size - 6, Math.min(30, size * 0.5)),
+      fill: color, "class": "bon-label" + (italic ? " bon-label-x" : "") }, g);
+    t.textContent = p.label;
+  }
+
+  function drawWeight(g, p) {
+    var item = el("g", { "data-shape": p.shape, "data-label": p.label, "data-layer": "pan" }, g);
+    var s = p.size, x0 = p.cx - s / 2, y0 = p.cy - s / 2;
+    el("ellipse", { cx: p.cx, cy: 1, rx: s * 0.48, ry: 4, fill: "#000000", opacity: 0.18 }, item); // shadow on the pan
+    if (p.shape === "ball") {
+      el("circle", { cx: p.cx, cy: p.cy, r: s / 2, fill: "url(#bon-ball)", stroke: "#0F4A20", "stroke-width": 1.5, "data-measure": "1" }, item);
+      label(item, p, p.cx, p.cy, s, "#FFFFFF");
+      return;
+    }
+    var zero = p.shape === "zero-box", unknown = p.shape === "unknown-box";
+    el("rect", { x: x0, y: y0, width: s, height: s, rx: 3, fill: zero ? "url(#bon-hatch)" : "url(#bon-box)",
+      stroke: C.blue, "stroke-width": 3, "stroke-dasharray": zero ? "6 4" : undefined, "data-measure": "1",
+      filter: zero ? undefined : "url(#bon-shadow)" }, item);
+    if (!zero) el("path", { d: "M" + (x0 + 4) + "," + (y0 + s - 5) + " L" + (x0 + 4) + "," + (y0 + 4) + " L" + (x0 + s - 5) + "," + (y0 + 4),
+      fill: "none", stroke: "#FFFFFF", "stroke-width": 2, opacity: 0.8 }, item); // bevel highlight
+    label(item, p, p.cx, p.cy, s, unknown ? C.blue : C.ink, unknown);
+  }
+
+  function drawFloat(g, p) {
+    var item = el("g", { "data-shape": p.shape, "data-label": p.label, "data-layer": p.layer }, g);
+    var s = p.size;
+    el("line", { x1: p.cx, y1: 0, x2: p.cx, y2: p.cy + s / 2 + 6, stroke: C.string, "stroke-width": 2, "data-string": "1" }, item);
+    el("path", { d: "M" + (p.cx - 5) + "," + (p.cy + s / 2 + 7) + " L" + p.cx + "," + (p.cy + s / 2 - 1) + " L" + (p.cx + 5) + "," + (p.cy + s / 2 + 7) + " Z",
+      fill: p.shape === "balloon" ? "#8E141C" : C.blue }, item); // knot
+    if (p.shape === "balloon") {
+      el("circle", { cx: p.cx, cy: p.cy, r: s / 2, fill: "url(#bon-balloon)", stroke: "#7A1016", "stroke-width": 1.5, "data-measure": "1" }, item);
+      label(item, p, p.cx, p.cy, s, "#FFFFFF");
+    } else {
+      el("rect", { x: p.cx - s / 2, y: p.cy - s / 2, width: s, height: s, rx: s * 0.28, fill: "url(#bon-xballoon)",
+        stroke: C.blue, "stroke-width": 3, "data-measure": "1" }, item);
+      label(item, p, p.cx, p.cy, s, C.ink);
     }
   }
 
   /* The side's expression as coloured pieces: x-terms blue, + numbers green, − numbers red. */
-  function exprPieces(terms) {
+  function exprPieces(side) {
     var out = [];
-    terms.forEach(function (t, i) {
-      if (t.kind === "x") {
-        if (i > 0) out.push({ text: " + ", color: COLORS.blue });
-        out.push({ text: (t.coef === 1 ? "" : t.coef) + "x", color: COLORS.blue });
-      } else {
-        var neg = t.value < 0, color = neg ? COLORS.red : COLORS.green;
-        out.push({ text: (i > 0 ? (neg ? " " + BON.MINUS + " " : " + ") : (neg ? BON.MINUS : "")) + Math.abs(t.value), color: color });
-      }
-    });
+    function xs(k, first) {
+      if (!first) out.push({ text: " + ", color: C.blue });
+      out.push({ text: (k === 1 ? "" : k) + "x", color: C.blue });
+    }
+    function cs(first) {
+      var neg = side.c < 0;
+      out.push({ text: (first ? (neg ? BON.MINUS : "") : (neg ? " " + BON.MINUS + " " : " + ")) + Math.abs(side.c), color: neg ? C.red : C.green });
+    }
+    var first = true;
+    if (side.constFirst && side.c) { cs(true); first = false; }
+    side.groups.forEach(function (k) { if (k > 0) { xs(k, first); first = false; } });
+    if (!side.constFirst && side.c) { cs(first); first = false; }
+    if (first) out.push({ text: "0", color: C.ink });
     return out;
   }
 
@@ -266,33 +253,28 @@
     options = options || {};
     svg.setAttribute("viewBox", "0 0 " + VB_W + " " + VB_H);
     svg.setAttribute("role", "img");
-    while (svg.firstChild) svg.removeChild(svg.firstChild);
-
+    clear(svg);
     var title = el("title", {}, svg);
-    var defs = el("defs", {}, svg);
-    var hatch = el("pattern", { id: "bon-hatch", width: 10, height: 10, patternUnits: "userSpaceOnUse",
-      patternTransform: "rotate(45)" }, defs);
-    el("rect", { width: 10, height: 10, fill: COLORS.zeroFill }, hatch);
-    el("line", { x1: 0, y1: 0, x2: 0, y2: 10, stroke: COLORS.zeroHatch, "stroke-width": 4 }, hatch);
+    defs(svg);
 
-    // Stand
-    el("path", { d: "M436,452 L564,452 L542,430 L458,430 Z", fill: COLORS.metal, "class": "bon-stand" }, svg);
-    el("rect", { x: PIVOT.x - 10, y: PIVOT.y, width: 20, height: 346, fill: COLORS.metal, "class": "bon-stand" }, svg);
-    el("path", { d: "M" + PIVOT.x + "," + (PIVOT.y - 62) + " l-8,-14 l16,0 Z", fill: COLORS.metal }, svg);
+    // stand
+    el("ellipse", { cx: PIVOT.x, cy: 422, rx: 110, ry: 7, fill: "#000000", opacity: 0.15 }, svg);
+    el("path", { d: "M368,422 L532,422 L508,394 L392,394 Z", fill: "url(#bon-metal)", "class": "bon-stand" }, svg);
+    el("rect", { x: PIVOT.x - 9, y: PIVOT.y, width: 18, height: 246, fill: "url(#bon-post)", "class": "bon-stand" }, svg);
 
-    var pans = { left: el("g", { "class": "bon-pan", "data-side": "left" }, svg),
-                 right: el("g", { "class": "bon-pan", "data-side": "right" }, svg) };
-
+    var back = { left: el("g", { "class": "bon-back", "data-side": "left" }, svg), right: el("g", { "class": "bon-back", "data-side": "right" }, svg) };
     var beam = el("g", { "class": "bon-beam" }, svg);
-    el("rect", { x: PIVOT.x - BEAM_HALF - 12, y: PIVOT.y - 8, width: 2 * BEAM_HALF + 24, height: 16, rx: 8,
-      fill: COLORS.metal }, beam);
-    el("path", { d: "M" + (PIVOT.x - 6) + "," + PIVOT.y + " L" + PIVOT.x + "," + (PIVOT.y - 58) + " L" +
-      (PIVOT.x + 6) + "," + PIVOT.y + " Z", fill: COLORS.metal }, beam);
-    el("circle", { cx: PIVOT.x - BEAM_HALF, cy: PIVOT.y, r: 6, fill: "#FFFFFF", stroke: COLORS.metal, "stroke-width": 3 }, beam);
-    el("circle", { cx: PIVOT.x + BEAM_HALF, cy: PIVOT.y, r: 6, fill: "#FFFFFF", stroke: COLORS.metal, "stroke-width": 3 }, beam);
-    el("circle", { cx: PIVOT.x, cy: PIVOT.y, r: 13, fill: "#FFFFFF", stroke: COLORS.metal, "stroke-width": 5 }, svg);
+    el("rect", { x: PIVOT.x - BEAM_HALF - 10, y: PIVOT.y - 7, width: 2 * BEAM_HALF + 20, height: 14, rx: 7, fill: "url(#bon-metal)" }, beam);
+    el("path", { d: "M" + (PIVOT.x - 5) + "," + PIVOT.y + " L" + PIVOT.x + "," + (PIVOT.y - 46) + " L" + (PIVOT.x + 5) + "," + PIVOT.y + " Z", fill: "#3A444F" }, beam);
+    [-1, 1].forEach(function (d) {
+      el("circle", { cx: PIVOT.x + d * BEAM_HALF, cy: PIVOT.y, r: 5, fill: "#FFFFFF", stroke: "#3A444F", "stroke-width": 2.5 }, beam);
+    });
+    el("circle", { cx: PIVOT.x, cy: PIVOT.y, r: 12, fill: "url(#bon-post)", stroke: "#2C343D", "stroke-width": 3 }, svg);
+    var pan = { left: el("g", { "class": "bon-pan", "data-side": "left" }, svg), right: el("g", { "class": "bon-pan", "data-side": "right" }, svg) };
+    var front = { left: el("g", { "class": "bon-front", "data-side": "left" }, svg), right: el("g", { "class": "bon-front", "data-side": "right" }, svg) };
+    var labels = { left: el("g", { "class": "bon-under", "data-side": "left" }, svg), right: el("g", { "class": "bon-under", "data-side": "right" }, svg) };
 
-    var state = { angle: 0, target: 0, anim: null, last: null };
+    var state = { angle: 0, target: 0, anim: null, last: null, wobble: null };
 
     function reducedMotion() {
       if (options.reducedMotion !== undefined) return !!options.reducedMotion;
@@ -303,91 +285,103 @@
       state.angle = angle;
       var rad = angle * Math.PI / 180, cos = Math.cos(rad), sin = Math.sin(rad);
       beam.setAttribute("transform", "rotate(" + angle.toFixed(3) + " " + PIVOT.x + " " + PIVOT.y + ")");
-      var lx = PIVOT.x - BEAM_HALF * cos, ly = PIVOT.y - BEAM_HALF * sin;
-      var rx = PIVOT.x + BEAM_HALF * cos, ry = PIVOT.y + BEAM_HALF * sin;
-      pans.left.setAttribute("transform", "translate(" + lx.toFixed(2) + " " + (ly + HANG).toFixed(2) + ")");
-      pans.right.setAttribute("transform", "translate(" + rx.toFixed(2) + " " + (ry + HANG).toFixed(2) + ")");
+      var pos = {
+        left: [PIVOT.x - BEAM_HALF * cos, PIVOT.y - BEAM_HALF * sin + HANG],
+        right: [PIVOT.x + BEAM_HALF * cos, PIVOT.y + BEAM_HALF * sin + HANG]
+      };
+      ["left", "right"].forEach(function (s) {
+        var t = "translate(" + pos[s][0].toFixed(2) + " " + pos[s][1].toFixed(2) + ")";
+        back[s].setAttribute("transform", t); pan[s].setAttribute("transform", t);
+        front[s].setAttribute("transform", t); labels[s].setAttribute("transform", t);
+      });
       svg.setAttribute("data-angle", angle.toFixed(3));
     }
 
-    /* The beam follows its target with short easing, so it keeps up with the slider. */
-    function animateTo(target) {
+    /* Short easing toward the target; a little settle when the beam arrives at level. */
+    function animateTo(target, settle) {
+      var prev = state.target;
       state.target = target;
       svg.setAttribute("data-target-angle", target.toFixed(3));
       if (reducedMotion()) {
         if (state.anim) { root.cancelAnimationFrame(state.anim); state.anim = null; }
-        place(target); return;
+        state.wobble = null; place(target); return;
       }
+      if (settle && target === 0 && prev !== 0) state.wobble = { start: null, amp: prev > 0 ? 1.6 : -1.6 };
       if (state.anim) return;
       var lastTs = null;
       function step(ts) {
         var dt = lastTs === null ? 16 : Math.min(64, ts - lastTs);
         lastTs = ts;
         var gap = state.target - state.angle;
-        if (Math.abs(gap) < 0.02) { place(state.target); state.anim = null; return; }
-        place(state.angle + gap * (1 - Math.exp(-dt / FOLLOW_MS)));
+        var base = Math.abs(gap) < 0.02 ? state.target : state.angle + gap * (1 - Math.exp(-dt / FOLLOW_MS));
+        var off = 0;
+        if (state.wobble) {
+          if (state.wobble.start === null) state.wobble.start = ts;
+          var t = ts - state.wobble.start;
+          if (t > 650) state.wobble = null;
+          else off = state.wobble.amp * Math.exp(-t / 170) * Math.sin(2 * Math.PI * t / 300);
+        }
+        place(base + off);
+        state.angle = base;
+        if (Math.abs(state.target - base) < 0.02 && !state.wobble) { place(state.target); state.anim = null; return; }
         state.anim = root.requestAnimationFrame(step);
       }
       state.anim = root.requestAnimationFrame(step);
     }
 
-    function drawPan(g, side, data, terms, total) {
-      while (g.firstChild) g.removeChild(g.firstChild);
-      el("line", { x1: 0, y1: -HANG, x2: -PAN_HALF + 6, y2: 0, stroke: COLORS.hanger, "stroke-width": 2.5 }, g);
-      el("line", { x1: 0, y1: -HANG, x2: PAN_HALF - 6, y2: 0, stroke: COLORS.hanger, "stroke-width": 2.5 }, g);
-      var strings = el("g", { "class": "bon-strings" }, g);
-      el("path", { d: "M" + -PAN_HALF + ",0 L" + PAN_HALF + ",0 L" + (PAN_HALF - 30) + ",20 L" + (-PAN_HALF + 30) +
-        ",20 Z", fill: COLORS.metal }, g);
-      var pieces = el("g", { "class": "bon-pieces" }, g);
-      data.items.forEach(function (it) { drawItem(it, pieces, strings, side); });
-      // the side's expression, in colour, riding with the pan (translate only)
-      var ex = el("text", { x: 0, y: EXPR_DY, "font-size": 40, "class": "bon-expr", "data-expr": side }, g);
-      exprPieces(terms).forEach(function (p) {
-        var ts = el("tspan", { fill: p.color }, ex);
-        ts.textContent = p.text;
+    function drawSide(s, side, x, style) {
+      clear(back[s]); clear(pan[s]); clear(front[s]); clear(labels[s]);
+      var lay = layoutSide(side, x, style, s);
+      var bowlD = "M" + -PAN_HALF + ",0 Q0,44 " + PAN_HALF + ",0 Z";
+      // back chains and back balloons
+      [-0.55, 0.55].forEach(function (k) {
+        el("line", { x1: 0, y1: -HANG, x2: k * PAN_HALF, y2: -9, stroke: C.chain, "stroke-width": 2.5, "stroke-dasharray": "5 3" }, back[s]);
       });
-      // the side's total, in a box, under the expression
-      var tw = Math.max(70, textWidth(total, 44) + 30);
-      var tg = el("g", { "class": "bon-total-box", "data-total": side }, g);
-      el("rect", { x: -tw / 2, y: TOTAL_TOP, width: tw, height: TOTAL_H, rx: 8, fill: "#FFFFFF", stroke: COLORS.ink, "stroke-width": 3 }, tg);
-      el("text", { x: 0, y: TOTAL_TOP + TOTAL_H / 2, "font-size": 44, "class": "bon-label bon-total-text" }, tg).textContent = total;
+      lay.floats.filter(function (p) { return p.layer === "back"; }).forEach(function (p) { drawFloat(back[s], p); });
+      // the pan: bowl, rim, then the weights
+      el("path", { d: bowlD, fill: "url(#bon-pan)" }, pan[s]);
+      el("ellipse", { cx: 0, cy: 0, rx: PAN_HALF, ry: 10, fill: "#B9C3CE", stroke: "#4A5562", "stroke-width": 2 }, pan[s]);
+      lay.weights.forEach(function (p) { drawWeight(pan[s], p); });
+      // front chains and front balloons
+      [-1, 1].forEach(function (k) {
+        el("line", { x1: 0, y1: -HANG, x2: k * (PAN_HALF - 4), y2: 0, stroke: C.chain, "stroke-width": 2.5, "stroke-dasharray": "5 3" }, front[s]);
+      });
+      el("circle", { cx: 0, cy: -HANG, r: 5, fill: "#3A444F" }, front[s]);
+      lay.floats.filter(function (p) { return p.layer === "front"; }).forEach(function (p) { drawFloat(front[s], p); });
+      // the expression under the pan (rides with it, never rotates)
+      var ex = el("text", { x: 0, y: EXPR_DY, "font-size": 30, "class": "bon-expr", "data-expr": s }, labels[s]);
+      exprPieces(side).forEach(function (pc) { el("tspan", { fill: pc.color }, ex).textContent = pc.text; });
+      return lay;
     }
 
     function update(opts) {
-      var E = BON.exact, M = BON.model;
-      var eq = opts.eq, x = opts.x || null, style = opts.style;
-      var cmp = x ? M.compare(eq, x) : null;
-      var lay = layout(eq, x, style);
-      drawPan(pans.left, "left", lay.left, eq.left, cmp ? E.fmtValue(cmp.left, style) : "?");
-      drawPan(pans.right, "right", lay.right, eq.right, cmp ? E.fmtValue(cmp.right, style) : "?");
+      var E = BON.exact, M = BON.model, eq = opts.eq, model = opts.model;
+      var x = opts.x || null, style = opts.style;
+      var layL = drawSide("left", model.left, x, style), layR = drawSide("right", model.right, x, style);
+      var cmp = x ? M.compareModel(model, x) : null;
       var target = !cmp || opts.tilt === "level" ? 0 : tiltFor(eq, cmp.signedDiff);
-      title.textContent = !cmp ? "Balance with " + M.equationText(eq) + " on its pans. No value of x yet." :
-        "Balance at x = " + E.fmtValue(x, style) + ". Left side " + E.fmtValue(cmp.left, style) + ", right side " +
-        E.fmtValue(cmp.right, style) + ". " + (opts.tilt === "level" ? "The beam is held level." :
-        cmp.heavier === "balanced" ? "The beam is level." : (cmp.heavier === "left" ? "Left" : "Right") + " side is down.");
-      state.last = { cmp: cmp, layout: lay, target: target };
+      title.textContent = !cmp ? "Balance with the model on its pans. No value of x yet." :
+        "Balance at x = " + E.fmtValue(x, style) + ". Left " + E.fmtValue(cmp.left, style) + ", right " + E.fmtValue(cmp.right, style) + ".";
       svg.setAttribute("data-heavier", cmp ? cmp.heavier : "none");
-      animateTo(target);
+      state.last = { cmp: cmp, target: target, left: layL, right: layR };
+      animateTo(target, !!opts.settle);
       return state.last;
     }
 
-    place(0);
-    /* Screen pixels per SVG unit (the drawing keeps its proportions inside the svg box). */
+    /* Screen pixels per drawing unit (the drawing keeps its proportions inside the svg box). */
     function unitPx() {
       var r = svg.getBoundingClientRect();
       return Math.min(r.width / VB_W, r.height / VB_H) || 0;
     }
-    return { update: update, unitPx: unitPx, getAngle: function () { return state.angle; }, getLast: function () { return state.last; } };
-  }
 
-  /* Side of an x-box at the true scale (SVG units): area ∝ |x|, never below the floor. */
-  function trueSide(x) {
-    var v = x ? Math.abs(x.n / x.d) : 0;
-    return Math.max(FLOOR_SIDE, UNIT_SIDE * Math.sqrt(v));
+    place(0);
+    return { update: update, unitPx: unitPx, getAngle: function () { return state.angle; } };
   }
 
   BON.createBalance = createBalance;
-  BON.balanceGeometry = { tiltFor: tiltFor, layout: layout, trueSide: trueSide, UNIT_SIDE: UNIT_SIDE, abcd: abcd, exprPieces: exprPieces,
-    MIN_TILT: MIN_TILT, MAX_TILT: MAX_TILT, NEVER_SHARE: NEVER_SHARE,
-    FLOAT_ZONE: FLOAT_ZONE, WEIGHT_BAND: WEIGHT_BAND, PAN_HALF: PAN_HALF, FLOOR_SIDE: FLOOR_SIDE };
+  BON.balanceGeometry = {
+    sizeOf: sizeOf, tiltFor: tiltFor, abcd: abcd, layoutSide: layoutSide, exprPieces: exprPieces,
+    S1: S1, FLOOR: FLOOR, UNKNOWN_SIDE: UNKNOWN_SIDE, PAN_HALF: PAN_HALF, MIN_TILT: MIN_TILT, MAX_TILT: MAX_TILT, NEVER_SHARE: NEVER_SHARE,
+    VB_W: VB_W, VB_H: VB_H, PIVOT: PIVOT, HANG: HANG, BEAM_HALF: BEAM_HALF, TOP_MARGIN: TOP_MARGIN
+  };
 })(typeof window !== "undefined" ? window : globalThis);

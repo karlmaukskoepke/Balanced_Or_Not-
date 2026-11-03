@@ -4,27 +4,23 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>What Makes It Balance?</title>
-  <link rel="stylesheet" href="css/style.css?v=v21a">
+  <link rel="stylesheet" href="css/style.css?v=v3s1">
 </head>
-<body class="app" data-step="guess">
+<body class="app" data-step="build">
   <header class="bar">
     <span class="bar-title">What Makes It Balance?</span>
     <nav class="bar-nav" aria-label="Equations">
       <button type="button" class="btn btn-nav" id="back" aria-keyshortcuts="b">&lsaquo; Back</button>
-      <span class="bar-progress" id="progress" aria-live="polite"></span>
+      <span class="bar-progress" id="progress"></span>
       <button type="button" class="btn btn-nav" id="next" aria-keyshortcuts="n">Next &rsaquo;</button>
     </nav>
     <ol class="steps" id="steps" aria-label="Steps for this equation">
-      <li data-step="guess">Guess</li>
-      <li data-step="predict">Predict</li>
+      <li data-step="build">Build</li>
       <li data-step="slide">Slide</li>
+      <li data-step="check">Check</li>
       <li data-step="solve">Solve</li>
-      <li data-step="answer">Answer</li>
+      <li data-step="compare">Compare</li>
     </ol>
-    <div class="sortbar dim-able">
-      <button type="button" class="sortbar-toggle" id="sortbar-toggle" aria-expanded="false" aria-controls="sortbar-panel"></button>
-      <div class="sortbar-panel" id="sortbar-panel" hidden></div>
-    </div>
     <span class="bar-tools">
       <button type="button" class="btn btn-help" id="help" aria-label="Show me around (help)">?</button>
       <a href="teachers.html">Teachers</a>
@@ -33,54 +29,51 @@
   </header>
 
   <main class="stage">
-    <section class="col-x" id="x-area" aria-label="Your value of x">
+    <section class="col-slide" id="col-slide" aria-label="Slider for x">
+      <div class="vs-host" id="vslider"></div>
       <form class="x-form" id="x-form" autocomplete="off">
         <label for="x-input" class="x-label"><span class="eqn-x">x</span> =</label>
         <input id="x-input" class="x-input" type="text" inputmode="text" spellcheck="false" autocomplete="off">
-        <button type="submit" class="btn btn-primary" id="x-try">Go</button>
+        <button type="submit" class="btn btn-primary" id="x-go">Go</button>
       </form>
       <p class="msg" id="x-msg" aria-live="polite"></p>
-      <div class="cue-slot"><p class="cue" id="cue" hidden></p></div>
-      <div class="xbox-wrap" id="xbox-wrap">
-        <span class="xbox-name eqn-x" aria-hidden="true">x</span>
-        <div class="xbox" id="xbox" role="status" aria-label="Current value of x"></div>
-      </div>
     </section>
 
     <section class="col-center" aria-label="Equation and balance">
-      <div class="eq-area" id="eq-area">
+      <div class="eq-area">
         <span class="eq-number" id="eq-number" aria-hidden="true"></span>
         <h1 class="eq-display" id="eq-display"></h1>
-        <p class="sr-only" id="result-sr" aria-live="polite"></p>
+      </div>
+      <div class="palettes" id="palettes" hidden>
+        <div class="palette" data-side="left" role="group" aria-label="Build the left side">
+          <button type="button" class="btn pbtn" data-act="x">x</button>
+          <button type="button" class="btn pbtn" data-act="plus">+1</button>
+          <button type="button" class="btn pbtn" data-act="minus">&minus;1</button>
+          <button type="button" class="linkish pclear" data-act="clear">clear side</button>
+        </div>
+        <div class="palette" data-side="right" role="group" aria-label="Build the right side">
+          <button type="button" class="btn pbtn" data-act="x">x</button>
+          <button type="button" class="btn pbtn" data-act="plus">+1</button>
+          <button type="button" class="btn pbtn" data-act="minus">&minus;1</button>
+          <button type="button" class="linkish pclear" data-act="clear">clear side</button>
+        </div>
       </div>
       <div class="balance-box" id="balance-box">
         <svg id="balance" class="balance"></svg>
       </div>
+      <div class="readout" id="readout">
+        <span class="tot" id="tot-left" aria-label="Left total"></span>
+        <span class="rel" id="rel" aria-hidden="true"></span>
+        <span class="tot" id="tot-right" aria-label="Right total"></span>
+        <span class="sr-only" id="rel-sr" aria-live="polite"></span>
+      </div>
     </section>
 
-    <section class="col-right" aria-label="Questions and your guesses">
+    <section class="col-right" aria-label="What to do">
       <div class="prompt" id="prompt" aria-live="polite"></div>
-      <div class="table-box" id="table-box">
-        <table class="guess-table" id="guess-table">
-          <caption class="sr-only">Your guesses</caption>
-          <thead><tr><th scope="col">#</th><th scope="col"><span class="eqn-x">x</span></th><th scope="col">Left</th>
-            <th scope="col">Right</th><th scope="col">Heavier</th></tr></thead>
-          <tbody id="guess-rows"></tbody>
-        </table>
-      </div>
-    </section>
-
-    <section class="col-line" aria-label="Number line">
-      <div class="nl" id="nl">
-        <div class="nl-markers" id="nl-markers"></div>
-        <div class="nl-line" aria-hidden="true"></div>
-        <div class="nl-ticks" id="nl-ticks" aria-hidden="true"></div>
-        <input id="x-slider" class="nl-range" type="range" min="-10" max="10" step="0.01" value="0"
-               aria-label="Number line slider for x">
-      </div>
-      <span class="slider-lock" id="slider-lock" title="The slider unlocks after 5 guesses and a prediction">&#128274; Locked</span>
     </section>
   </main>
+  <div class="xbox" id="xbox"><span></span></div>
 
   <div class="coach" id="coach" hidden>
     <div class="coach-ring" id="coach-ring"></div>
@@ -94,12 +87,14 @@
     </div>
   </div>
 
-  <script src="js/exact.js?v=v21a"></script>
-  <script src="js/equations.js?v=v21a"></script>
-  <script src="js/model.js?v=v21a"></script>
-  <script src="js/flow.js?v=v21a"></script>
-  <script src="js/equation-view.js?v=v21a"></script>
-  <script src="js/balance.js?v=v21a"></script>
-  <script src="js/activity.js?v=v21a"></script>
+  <script src="js/exact.js?v=v3s1"></script>
+  <script src="js/equations.js?v=v3s1"></script>
+  <script src="js/model.js?v=v3s1"></script>
+  <script src="js/flow.js?v=v3s1"></script>
+  <script src="js/equation-view.js?v=v3s1"></script>
+  <script src="js/balance.js?v=v3s1"></script>
+  <script src="js/vslider.js?v=v3s1"></script>
+  <script src="js/explore.js?v=v3s1"></script>
+  <script src="js/activity.js?v=v3s1"></script>
 </body>
 </html>

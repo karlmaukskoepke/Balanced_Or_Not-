@@ -1,10 +1,11 @@
-// Real-browser checks of the Stage 1 test page. Run: node tests/browser.cjs [outDir]
-// Serves the folder itself, so no other setup is needed (Playwright must be installed).
+// Real-browser checks (spec v3, Stage 1) at 1366 x 650 and 1366 x 768. Run: node tests/browser.cjs [outDir]
+// Serves the folder itself (Playwright must be installed). Covers the section 13 cases that apply to Stage 1.
 const http = require("http"), fs = require("fs"), path = require("path");
 let chromium;
 try { ({ chromium } = require("playwright")); } catch (e) { console.log("browser: SKIP (no Playwright)"); process.exit(0); }
-const ROOT = path.join(__dirname, ".."), OUT = process.argv[2] || path.join(ROOT, "docs", "stage-1");
+const ROOT = path.join(__dirname, ".."), OUT = process.argv[2] || path.join(ROOT, "docs", "screens");
 const TYPES = { ".html": "text/html", ".js": "text/javascript", ".css": "text/css", ".pdf": "application/pdf" };
+const M = "−";
 const server = http.createServer((req, res) => {
   const p = path.join(ROOT, decodeURIComponent(new URL(req.url, "http://x").pathname));
   fs.readFile(p.endsWith("/") ? p + "index.html" : p, (err, data) => {
@@ -20,106 +21,204 @@ const check = (ok, msg) => { console.log((ok ? "  ok  " : "  FAIL ") + msg); if 
   const base = `http://localhost:${server.address().port}/`;
   fs.mkdirSync(OUT, { recursive: true });
   const browser = await chromium.launch();
-  const page = await browser.newPage({ viewport: { width: 1280, height: 900 }, reducedMotion: "reduce" });
-  const errors = []; page.on("pageerror", (e) => errors.push(e.message));
-  const open = async (q) => { await page.goto(base + "balance-test.html?" + q); await page.waitForSelector("[data-total]"); };
-  const shapes = (side) => page.$$eval(`.bon-pan[data-side=${side}] [data-shape]`,
-    (els) => els.map((e) => e.dataset.shape + ":" + e.dataset.label));
-  const angle = async () => parseFloat(await page.getAttribute("#balance", "data-angle"));
-  const result = () => page.textContent("#readout-result");
 
-  await open("eq=3&x=1.33");
-  check((await result()).includes("Left side is heavier by 0.01"), "#3 (flipped) at 1.33: left heavier by 0.01");
-  check((await angle()) <= -4, "#3 at 1.33: beam tips at least 4° (left side down): " + (await angle()));
-  await page.screenshot({ path: path.join(OUT, "eq3-x1.33.png") });
-  await page.focus("#x-slider"); await page.keyboard.press("ArrowRight");
-  check((await page.inputValue("#x-input")) === "1.34" && (await result()).includes("Right side is heavier by 0.02"),
-    "#3: slider arrow key moves to 1.34 and the tilt flips");
-  check((await angle()) >= 4, "#3 at 1.34: right side down at least 4°");
+  for (const [w, hgt] of [[1366, 650], [1366, 768]]) {
+    const tag = `${w}x${hgt}`;
+    const page = await browser.newPage({ viewport: { width: w, height: hgt }, reducedMotion: "reduce" });
+    const errors = []; page.on("pageerror", (e) => errors.push(e.message));
+    const rel = () => page.getAttribute("#rel", "data-rel").then((r) => (page.$eval("#rel", (e) => e.textContent ? e.getAttribute("data-rel") : "")));
+    const tots = () => page.evaluate(() => [document.getElementById("tot-left").textContent, document.getElementById("tot-right").textContent]);
+    const angle = async () => parseFloat(await page.getAttribute("#balance", "data-target-angle"));
+    const type = async (x) => { await page.fill("#x-input", x); await page.press("#x-input", "Enter"); };
+    const testEq = async (id, x) => { await page.goto(base + `balance-test.html?eq=${id}` + (x !== undefined ? `&x=${encodeURIComponent(x)}` : "")); await page.waitForSelector("[data-expr]"); };
+    const shapes = (side) => page.$$eval(`[data-side=${side}] [data-shape]`, (els) => els.map((e) => e.dataset.shape + ":" + e.dataset.label));
+    const fits = async (where) => {
+      const r = await page.evaluate(() => {
+        const over = [...document.querySelectorAll(".stage > *, .bar > *, .col-center > *, .col-slide > *")].filter((el) => {
+          const b = el.getBoundingClientRect(); return b.height && (b.bottom > innerHeight + 0.5 || b.right > innerWidth + 0.5);
+        }).map((el) => el.className || el.id);
+        return { page: document.documentElement.scrollHeight - innerHeight, w: document.documentElement.scrollWidth - innerWidth, over };
+      });
+      check(r.page <= 0 && r.w <= 0 && !r.over.length, `${tag} ${where}: fits, nothing scrolls or is cut off (${JSON.stringify(r)})`);
+    };
 
-  await open("eq=9&x=0");
-  check((await result()).includes("Balanced: both sides are 4"), "#9 at 0: balanced at 4 and 4");
-  check(JSON.stringify(await shapes("left")) === JSON.stringify(["zero-box:0", "zero-box:0", "zero-box:0", "weight:+4"]),
-    "#9 at 0: three zero boxes and a +4 weight on the left");
-  check((await page.$$eval('[data-shape="zero-box"] rect', (r) => r.every((x) => x.getAttribute("stroke-dasharray")))),
-    "#9 at 0: zero boxes are dashed");
-  check((await angle()) === 0, "#9 at 0: level");
-  await page.screenshot({ path: path.join(OUT, "eq9-x0.png") });
-
-  await open("eq=2&x=-3");
-  check((await result()).includes("both sides are −7"), "#2 at −3: both sides −7");
-  check(JSON.stringify(await shapes("left")) === JSON.stringify(["float-box:−3", "float-box:−3", "float-box:−3", "weight:+2"]),
-    "#2 at −3: left has three floating boxes −3 and a +2 weight");
-  check(JSON.stringify(await shapes("right")) === JSON.stringify(["float-box:−3", "balloon:−4"]),
-    "#2 at −3: right has a floating box and a −4 balloon");
-  check((await page.$$('.bon-pan [data-string]')).length === 5, "#2 at −3: every floating piece has a string (5)");
-  await page.screenshot({ path: path.join(OUT, "eq2-x-3.png") });
-
-  for (const id of [5, 8]) {
-    await open(`eq=${id}&x=0`);
-    let level = 0;
-    for (const x of ["-10", "-3.33", "-0.01", "0", "0.01", "2.5", "10"]) {
-      await page.fill("#x-input", x);
-      if ((await angle()) === 0) level++;
+    // ---- the left x-box and the pan x-boxes: identical rendered sizes ----
+    for (const v of ["-6", "-1", "0", "0.5", "1", "6"]) {
+      await testEq(1, v);
+      const s = await page.evaluate(() => {
+        const xb = document.getElementById("xbox").getBoundingClientRect();
+        const pans = [...document.querySelectorAll("[data-side] [data-shape$='box'] [data-measure], [data-side] [data-shape='x-balloon'] [data-measure]")]
+          .map((r) => r.getBoundingClientRect().width);
+        return { x: xb.width, pans };
+      });
+      const same = s.pans.length === 3 && s.pans.every((p) => Math.abs(p - s.x) <= 0.75);
+      check(same, `${tag}: x = ${v}: the left x-box and all 3 pan x-boxes are the same size (${s.x.toFixed(2)} vs ${s.pans.map((p) => p.toFixed(2)).join(", ")} px)`);
     }
-    check(level === 0, `#${id}: never level at any tried value`);
-  }
-  await open("eq=8&x=8"); await page.screenshot({ path: path.join(OUT, "eq8-x8.png") });
-  for (const id of [6, 7, 10]) {
-    await open(`eq=${id}&x=0`);
-    let tipped = 0;
-    for (const x of ["-10", "-2", "-0.5", "0", "0.01", "4", "10"]) {
-      await page.fill("#x-input", x);
-      if ((await angle()) !== 0) tipped++;
+
+    // ---- #3 flipped ----
+    await testEq(3, "0");
+    check((await rel()) === ">" && (await angle()) < 0, `${tag} #3 at 0: left heavier (>)`);
+    await type("3");
+    check((await rel()) === "<" && (await angle()) > 0, `${tag} #3 at 3: right heavier (<)`);
+    await type("1.3");
+    await page.focus(".vs-thumb");
+    let sawEq = false;
+    for (let i = 0; i < 12; i++) { await page.keyboard.press("ArrowUp"); if ((await rel()) === "=") sawEq = true; }
+    check(!sawEq && (await page.getAttribute(".vs-thumb", "aria-valuenow")) === "1.42", `${tag} #3: nudging 1.30 -> 1.42 by 0.01 never reaches =`);
+    // drag slowly across 1.2 .. 1.5
+    const tr = await page.$eval(".vs-track", (t) => t.getBoundingClientRect().toJSON());
+    const yFor = (v) => tr.top + 14 + (tr.height - 28) * (6 - v) / 12;
+    await page.mouse.move(tr.left + 52, yFor(1.2)); await page.mouse.down();
+    for (let y = yFor(1.2); y >= yFor(1.5); y -= 0.5) { await page.mouse.move(tr.left + 52, y); if ((await rel()) === "=") sawEq = true; }
+    await page.mouse.up();
+    check(!sawEq, `${tag} #3: dragging across 1.2–1.5 never reaches =`);
+    await type("4/3");
+    const eqStyle = await page.$eval("#rel", (r) => getComputedStyle(r, "::before").backgroundImage);
+    check((await rel()) === "=" && /gradient/.test(eqStyle) && (await tots()).join("|") === "19/3|19/3", `${tag} #3: typing 4/3 reaches the gold = (19/3 and 19/3)`);
+    await page.screenshot({ path: `${OUT}/${tag}-eq3-four-thirds.png` });
+
+    // ---- #9 at 0, #2 at −3 ----
+    await testEq(9, "0");
+    const zb = await page.$$eval("[data-shape='zero-box'] rect", (r) => r.map((x) => x.getAttribute("stroke-dasharray")));
+    check(zb.length === 3 && zb.every(Boolean) && (await tots()).join("|") === "4|4" && (await rel()) === "=", `${tag} #9 at 0: dashed 0 boxes, 4 and 4, gold =`);
+    await testEq(2, "-3");
+    const L = await shapes("left"), R = await shapes("right");
+    check((await tots()).join("|") === `${M}7|${M}7` && L.filter((s) => s.startsWith("x-balloon")).length === 3 &&
+      R.includes(`balloon:${M}4`) && R.includes(`x-balloon:${M}3`), `${tag} #2 at −3: both −7; x-balloons on the left; −4 balloon and an x-balloon on the right`);
+    await page.screenshot({ path: `${OUT}/${tag}-eq2-minus3.png` });
+
+    // ---- never / always ----
+    for (const id of [4, 5, 8, 11, 6, 7, 10]) {
+      await testEq(id, "-6");
+      const rels = new Set(), angles = new Set();
+      for (const v of ["-6", "-2.5", "-1", "0", "1/3", "2", "4.75", "6"]) { await type(v); rels.add(await rel()); angles.add(await angle()); }
+      if ([4, 5, 8, 11].includes(id)) check(!rels.has("=") && angles.size === 1, `${tag} #${id}: never =, one constant tilt (${[...rels].join("")})`);
+      else check(rels.size === 1 && rels.has("=") && angles.has(0) && angles.size === 1, `${tag} #${id}: always =, level`);
     }
-    check(tipped === 0, `#${id}: level at every tried value, including 0 and negatives`);
+
+    // ---- balloons straight up, never over the equation, at the extremes ----
+    let straight = true, clear = true;
+    for (const id of [2, 5, 6, 11, 12]) for (const v of ["-6", "6"]) {
+      await testEq(id, v);
+      const r = await page.evaluate(() => {
+        const eqBox = document.getElementById("eq-display").getBoundingClientRect();
+        return [...document.querySelectorAll("[data-shape='balloon'], [data-shape='x-balloon']")].map((b) => {
+          const line = b.querySelector("[data-string]"), body = b.querySelector("[data-measure]").getBoundingClientRect();
+          return { straight: line.getAttribute("x1") === line.getAttribute("x2"), top: body.top, eqBottom: eqBox.bottom };
+        });
+      });
+      if (!r.every((b) => b.straight)) straight = false;
+      if (!r.every((b) => b.top >= b.eqBottom)) clear = false;
+    }
+    check(straight, `${tag}: every balloon string is vertical`);
+    check(clear, `${tag}: no balloon overlaps the equation at x = −6 or 6`);
+    await testEq(12, "-6");
+    await page.screenshot({ path: `${OUT}/${tag}-eq12-minus6.png` });
+
+    // ---- the slider: snap, release, keys ----
+    await testEq(1, "0");
+    const tr2 = await page.$eval(".vs-track", (t) => t.getBoundingClientRect().toJSON());
+    const y2 = (v) => tr2.top + 14 + (tr2.height - 28) * (6 - v) / 12;
+    const val = () => page.getAttribute(".vs-thumb", "aria-valuenow");
+    await page.mouse.move(tr2.left + 52, y2(0)); await page.mouse.down();
+    await page.mouse.move(tr2.left + 52, y2(2.08)); const snapped = await val();
+    await page.mouse.move(tr2.left + 52, y2(2.3)); const released = await val();
+    await page.mouse.up();
+    check(snapped === "2.00" && Math.abs(parseFloat(released) - 2.3) < 0.05, `${tag}: drag snaps to 2 near 2.08 (${snapped}) and lets go by 2.3 (${released})`);
+    await type("1");
+    await page.focus(".vs-thumb");
+    await page.keyboard.press("ArrowUp"); const a1 = await val();
+    await page.keyboard.press("Shift+ArrowUp"); const a2 = await val();
+    await page.keyboard.press("PageUp"); const a3 = await val();
+    await page.keyboard.press("ArrowDown"); const a4 = await val();
+    check(a1 === "1.01" && a2 === "1.11" && a3 === "2.11" && a4 === "2.10", `${tag}: keys: ↑ 0.01, Shift+↑ 0.1, PageUp 1, ↓ 0.01 (${[a1, a2, a3, a4].join(", ")})`);
+    check((await page.textContent("#tot-left")) === "7.2", `${tag}: totals follow the keys (2(2.1) + 3 = 7.2)`);
+    await type("7");
+    check((await page.textContent("#x-msg")) === `Try a value between ${M}6 and 6.`, `${tag}: typed 7 is refused`);
+    await type("-1/2");
+    check((await page.textContent("#xbox")) === `${M}1/2` && (await tots()).join("|") === "2|13/2", `${tag}: typed −1/2: x-box shows −1/2, totals 2 and 13/2`);
+
+    // ---- busiest balance: five boxes and a ball on one pan, a balloon on the other ----
+    for (const [id, v] of [[8, "6"], [12, "6"], [12, "-6"], [5, "-6"]]) {
+      await testEq(id, v);
+      await fits(`#${id} at ${v}`);
+    }
+    await testEq(8, "6");
+    await page.screenshot({ path: `${OUT}/${tag}-eq8-six.png` });
+    const allText = await page.evaluate(() => { const w = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT); const o = []; while (w.nextNode()) o.push(w.currentNode.nodeValue); return o; });
+    check(allText.every((t) => !/\d\.\d{3,}|NaN|undefined/.test(t)), `${tag}: no float artifacts in any text on screen`);
+    check(!(await page.$("[data-sub], .guess-table, .nl-marker, .sortbar, .eq-arrow")), `${tag}: no substitution lines, table, markers, sort bar or label under the equation`);
+
+    // ---- the student page: Build and Slide ----
+    await page.goto(base + "index.html");
+    await page.waitForSelector("#coach:not([hidden])");
+    let n = 0; const texts = [];
+    while (!(await page.isHidden("#coach")) && n < 10) { n++; texts.push(await page.textContent("#coach-text")); if (n === 1) await fits("coach marks"); await page.click("#coach-next"); }
+    check(n === 6 && texts.some((t) => /build/i.test(t)) && texts.some((t) => /heavier at the top/.test(t)), `${tag} #1: six coach marks`);
+    check((await page.getAttribute('#steps li[aria-current="step"]', "data-step")) === "build", `${tag} #1: step strip shows Build`);
+    check(await page.isVisible("#palettes") && (await page.$eval(".vs", (v) => v.classList.contains("is-disabled"))), `${tag} #1: palettes shown, slider locked`);
+    const click = async (side, act, times = 1) => { for (let i = 0; i < times; i++) await page.click(`.palette[data-side=${side}] [data-act=${act}]`); };
+    await click("left", "x", 2); await click("left", "plus", 3); await click("right", "x"); await click("right", "minus");
+    check((await angle()) === 0, `${tag} #1: the beam stays level while building`);
+    check((await page.textContent('[data-expr="right"]')) === `x ${M} 1`, `${tag} #1: the right pan reads x − 1 (a −1 balloon)`);
+    await page.click("#built-btn");
+    const msg = await page.textContent("#prompt .prompt-msg");
+    check(msg === "Look at the right side again." && (await page.getAttribute('#steps li[aria-current="step"]', "data-step")) === "build",
+      `${tag} #1: a wrong model is refused: "${msg}"`);
+    // click the balloon to remove it, then build +7
+    await page.click('[data-side="right"] [data-shape="balloon"]');
+    check((await page.textContent('[data-expr="right"]')) === "x", `${tag} #1: clicking a piece takes it off`);
+    await click("right", "plus", 7);
+    await fits("building");
+    await page.screenshot({ path: `${OUT}/${tag}-build.png` });
+    await page.click("#built-btn");
+    check((await page.getAttribute('#steps li[aria-current="step"]', "data-step")) === "slide" && !(await page.$eval(".vs", (v) => v.classList.contains("is-disabled"))),
+      `${tag} #1: the right model is accepted; the slider unlocks`);
+    check(!(await page.$("#enough-btn")), `${tag} #1: no "I've seen enough" yet`);
+    await page.focus(".vs-thumb"); await page.keyboard.press("PageUp"); await page.keyboard.press("PageUp");
+    check(!(await page.$("#enough-btn")), `${tag} #1: still none after two positions`);
+    await type("4");
+    check((await rel()) === "=" && !!(await page.$("#enough-btn")), `${tag} #1: x = 4 balances (gold =); "I've seen enough" after three positions`);
+    await fits("slide");
+    await page.screenshot({ path: `${OUT}/${tag}-slide.png` });
+    await page.click("#enough-btn");
+    check(!(await page.isDisabled("#next")), `${tag} #1: done with Stage 1 for this equation; Next opens #2`);
+    // a pre-built model
+    await page.goto(base + "index.html?all=1&eq=7"); await page.waitForSelector("#continue-btn");
+    check((await page.textContent("#prompt")).includes("Look at the model. Does it match the equation?") && (await page.isHidden("#palettes")), `${tag} #7: pre-built, look and continue`);
+    check((await shapes("left")).filter((s) => s.startsWith("unknown-box")).length === 2 && (await page.textContent('[data-expr="left"]')) === "5 + x + x",
+      `${tag} #7: the model shows two separate boxes, "5 + x + x"`);
+    await page.click("#continue-btn");
+    check((await rel()) === "=", `${tag} #7: slide starts at 0, balanced`);
+    // Part 3: broken slider
+    await page.goto(base + "index.html?all=1&eq=11"); await page.waitForSelector("[data-expr]");
+    check(await page.$eval(".vs", (v) => v.classList.contains("is-disabled")) && (await page.isDisabled("#x-input")), `${tag} #11: slider and typed box disabled (Part 3)`);
+    check(errors.length === 0, `${tag}: no script errors ${errors.join("; ")}`);
+    await page.close();
   }
-  await open("eq=10&x=-2"); await page.screenshot({ path: path.join(OUT, "eq10-x-2.png") });
-  await open("eq=11&x=2"); await page.screenshot({ path: path.join(OUT, "eq11-x2.png") });
 
-  // typing, arrow nudges, no float artifacts
-  await open("eq=1&x=0");
-  await page.fill("#x-input", "0.1"); await page.keyboard.press("Shift+ArrowUp");
-  check((await page.inputValue("#x-input")) === "0.11", "Shift+Up adds 0.01 in the typed box");
-  await page.fill("#x-input", "0.3");
-  check((await page.textContent("#readout-left")).includes("2(0.3) + 3 = 3.6"), "typed 0.3: readout is exact");
-  await page.fill("#x-input", "abc");
-  check((await page.textContent("#x-error")).length > 0, "a non-number shows a message");
-  const allText = await page.textContent("body");
-  check(!/\d\.\d{3,}|NaN|undefined/.test(allText), "no long decimals, NaN or undefined on the page");
+  // live dragging updates on every input (motion allowed)
+  const live = await browser.newPage({ viewport: { width: 1366, height: 650 }, reducedMotion: "no-preference" });
+  await live.goto(base + "balance-test.html?eq=1&x=0"); await live.waitForSelector("[data-expr]");
+  const t = await live.$eval(".vs-track", (e) => e.getBoundingClientRect().toJSON());
+  await live.mouse.move(t.left + 52, t.top + t.height / 2); await live.mouse.down();
+  const seen = new Set();
+  for (let i = 1; i <= 8; i++) { await live.mouse.move(t.left + 52, t.top + t.height / 2 - i * 17); seen.add(await live.textContent("#tot-left") + await live.getAttribute("#balance", "data-target-angle")); }
+  await live.mouse.up();
+  check(seen.size >= 6, `live: totals and beam follow the drag (${seen.size} states)`);
+  await live.fill("#x-input", "-5"); await live.press("#x-input", "Enter");
+  await live.waitForTimeout(120);
+  const mid = await live.getAttribute(".vs-thumb", "aria-valuenow");
+  await live.waitForTimeout(1100);
+  const end = await live.getAttribute(".vs-thumb", "aria-valuenow");
+  check(mid !== end && end === "-5.00", `live: a typed value travels (${mid} on the way) and lands (${end})`);
+  await live.close();
 
-  // equation buttons with the keyboard
-  await page.focus(".eq-pick:nth-child(4)"); await page.keyboard.press("Enter");
-  check((await page.textContent("#eq-display")) === "2x + 3 = 2x + 8", "keyboard picks equation 4");
-  check((await page.$$eval("#eq-display .eqn-x", (e) => e.map((s) => s.textContent))).join(",") === "2x,2x",
-    "x-terms are marked as x-terms (blue)");
-
-  // easing when motion is allowed
-  const page2 = await browser.newPage({ viewport: { width: 1280, height: 900 }, reducedMotion: "no-preference" });
-  await page2.goto(base + "balance-test.html?eq=1&x=0"); await page2.waitForSelector("[data-total]");
-  await page2.fill("#x-input", "9");
-  await page2.waitForTimeout(120);
-  const mid = parseFloat(await page2.getAttribute("#balance", "data-angle"));
-  const target = parseFloat(await page2.getAttribute("#balance", "data-target-angle"));
-  await page2.waitForTimeout(700);
-  const end = parseFloat(await page2.getAttribute("#balance", "data-angle"));
-  check(mid !== target && end === target, `beam eases when motion is allowed (mid ${mid}, end ${end})`);
-
-  // phone width
-  const page3 = await browser.newPage({ viewport: { width: 390, height: 844 }, reducedMotion: "reduce" });
-  await page3.goto(base + "balance-test.html?eq=10&x=4"); await page3.waitForSelector("[data-total]");
-  const sw = await page3.evaluate(() => document.documentElement.scrollWidth);
-  check(sw <= 390, "no sideways scroll at phone width (" + sw + ")");
-  await page3.screenshot({ path: path.join(OUT, "phone-eq10-x4.png"), fullPage: true });
-
-  await require("./activity.cjs")(browser, base, OUT, check);
-
-  await page.goto(base + "teachers.html");
-  for (const href of await page.$$eval("a[href$='.pdf']", (a) => a.map((x) => x.getAttribute("href")))) {
-    const r = await page.request.get(base + href);
-    check(r.status() === 200, "teacher link works: " + href);
+  const p = await browser.newPage();
+  await p.goto(base + "teachers.html");
+  for (const href of await p.$$eval("a[href$='.pdf']", (a) => a.map((x) => x.getAttribute("href")))) {
+    check((await p.request.get(base + href)).status() === 200, "teacher link works: " + href);
   }
-  check(errors.length === 0, "no script errors" + (errors.length ? ": " + errors.join("; ") : ""));
   await browser.close(); server.close();
   console.log(fails ? `\nbrowser: ${fails} FAILED` : "\nbrowser: all passed");
   process.exitCode = fails ? 1 : 0;
