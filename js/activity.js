@@ -7,7 +7,7 @@
  * After #12: the completion screen.
  *
  * Navigation: the page walks through in order; every numbered equation in the top strip is clickable and
- * keeps its own progress. Progress is saved in this browser ("Welcome back. Continue at #N" / Start over).
+ * keeps its own progress. Progress is saved in this browser; the load screen asks "Where is your group starting?".
  *
  * Address options (for the teacher): ?eq=4 open equation 4 · ?reset=1 clear saved progress first.
  */
@@ -182,6 +182,7 @@
   function drawPrompt(eq, r) {
     var p = $("prompt"), st = step(eq, r), focus = null;
     p.textContent = "";
+    if (st === "build") p.appendChild(h("p", { "class": "prompt-driver", text: "Driver: switch this equation" }));
     if (st === "build" && eq.built) {
       p.appendChild(h("p", { "class": "prompt-q", text: "Build the equation on the balance." }));
       p.appendChild(h("p", { "class": "prompt-help", text: "x adds a box. +1 and −1 change the number on that side. Click a piece to take it off." }));
@@ -205,6 +206,7 @@
     } else if (st === "slide") {
       p.appendChild(h("p", { "class": "prompt-q", text: "Move the slider. Where does it balance?" }));
       p.appendChild(h("p", { "class": "prompt-help", text: "Drag it, use the arrow keys, or type a value for x." }));
+      p.appendChild(h("p", { "class": "prompt-group", text: "Talk it over: what do you see? Agree as a group, then tap." }));
       if (r.positions.length >= F.MIN_POSITIONS) {
         p.appendChild(h("button", { type: "button", "class": "btn btn-primary", id: "enough-btn", text: "I’ve seen enough", onclick: function () {
           r.slid = true; save(); enterStep(eq, r, true);
@@ -231,8 +233,25 @@
     } else if (st === "compare") {
       p.appendChild(h("p", { "class": "prompt-q is-compact" }, ["Compare with your work. ",
         h("span", { "class": "prompt-help", text: "Copy the correct steps onto your sheet." })]));
+      if (BON.BRIDGE[eq.id]) {
+        p.insertBefore(h("div", { "class": "bridge", role: "note" }, [h("p", { "class": "bridge-title", text: "Talk with your group" }),
+          h("p", { text: BON.BRIDGE[eq.id] })]), p.firstChild);
+      }
       p.appendChild(stepsBlock(eq));
-      p.appendChild(h("p", { "class": "prompt-col", html: "Write this equation under <b>" + CATS[eq.category].title + "</b> on your reflection page." }));
+      // sorting is a group decision: ask first, then show the column
+      var col = h("div", { "class": "prompt-col", id: "col-box" });
+      var showCol = function () {
+        col.textContent = "";
+        col.appendChild(h("p", { html: "Write this equation under <b>" + CATS[eq.category].title + "</b> on your reflection page." }));
+      };
+      if (r.colShown) showCol();
+      else {
+        col.appendChild(h("p", { text: "Decide as a group: which column?" }));
+        col.appendChild(h("button", { type: "button", "class": "btn btn-small-inline", id: "col-btn", text: "Check our column", onclick: function () {
+          r.colShown = true; save(); showCol(); var n = $("next-eq"); if (n) n.focus();
+        } }));
+      }
+      p.appendChild(col);
       var last = state.current === EQS.length - 1;
       focus = p.appendChild(h("button", { type: "button", "class": "btn btn-primary", id: "next-eq",
         text: last ? "Next ›" : "Next equation ›", onclick: function () { afterCompare(eq); } }));
@@ -243,7 +262,7 @@
   /* Part 3: predict a category and pick a reason; wrong reasoning gets a counterexample. */
   var p3pick = { cat: null, reason: null, feedback: null };
   function drawPredict(p, eq, r) {
-    p.appendChild(h("p", { "class": "prompt-q", text: "The slider broke. What do you predict?" }));
+    p.appendChild(h("p", { "class": "prompt-q", text: "The slider broke. What does your group predict?" }));
     var cats = h("div", { "class": "choices is-row", role: "group", "aria-label": "Prediction" });
     F.SLIDER_WORDS.forEach(function (w) {
       cats.appendChild(h("button", { type: "button", "class": "btn choice", "data-cat": w[0], text: w[1],
@@ -304,9 +323,11 @@
     } });
     var big = h("div", { "class": "stop-eq" }, [h("span", { "class": "eq-number", text: eq.id }), eqLine(eq)]);
     showStop([big,
-      h("p", { "class": "stop-lead", text: "Solve #" + eq.id + " on your sheet." }),
-      h("p", { "class": "stop-text", text: eq.part === 3 ? "Circle your prediction, write why, and solve it. Press ‘I solved it’ when you have an answer." :
-        "Circle what the slider showed, write where it balances, and solve it. Press ‘I solved it’ when you have an answer." }),
+      h("p", { "class": "stop-lead", text: "Solve #" + eq.id + " together on your whiteboard." }),
+      h("p", { "class": "stop-text", text: "Talk through each step. Then everyone copies it onto their own sheet: " +
+        (eq.part === 3 ? "circle your prediction, write why, and write your result." :
+        "circle what the slider showed, write where it balances, and write your result.") +
+        " Press ‘I solved it’ when your group has an answer." }),
       b], b);
   }
 
@@ -316,7 +337,8 @@
       state.reflections[id] = true; save(); hideStop(); then();
     } });
     var nodes = [h("p", { "class": "stop-lead", text: "Turn to your reflection page." }),
-      h("p", { "class": "stop-text", text: ps.length === 1 ? "Do prompt " + ps[0].n + "." : "Do prompts " + ps.map(function (q) { return q.n; }).join(", ").replace(/, ([^,]*)$/, " and $1") + "." })];
+      h("p", { "class": "stop-text", text: "Talk it over as a group, then everyone writes. " +
+        (ps.length === 1 ? "Do prompt " + ps[0].n + "." : "Do prompts " + ps.map(function (q) { return q.n; }).join(", ").replace(/, ([^,]*)$/, " and $1") + ".") })];
     ps.forEach(function (q) {
       nodes.push(h("p", { "class": "stop-prompt" + (ps.length > 1 ? " is-small" : "") }, [h("span", { "class": "prompt-n", text: q.n }), q.text]));
     });
@@ -324,17 +346,29 @@
     showStop(nodes, b);
   }
 
-  function welcomeScreen() {
-    var n = firstOpen(), allDone = EQS.every(isDone);
-    var go = h("button", { type: "button", "class": "btn btn-primary btn-big", id: "welcome-go",
-      text: allDone ? "See my results" : "Continue at #" + EQS[n].id, onclick: function () {
-        hideStop();
-        if (allDone) { completionScreen(); return; }
-        state.current = n; save(); enterStep(EQS[n], rec(EQS[n]), true);
-      } });
-    var over = h("button", { type: "button", "class": "btn", id: "welcome-over", text: "Start over", onclick: startOver });
-    showStop([h("p", { "class": "stop-lead", text: allDone ? "Welcome back. You finished all 12." : "Welcome back. Continue at #" + EQS[n].id + "." }),
-      h("div", { "class": "stop-buttons" }, [go, over])], go);
+  /* Groups re-form daily, so the load screen asks where the group is starting (default: the last one opened here). */
+  function startScreen() {
+    var def = state.current;
+    var startAt = function (i) {
+      hideStop(); state.current = i; save();
+      enterStep(EQS[i], rec(EQS[i]), true);
+      if (i === 0 && !state.coachSeen) startCoach();
+    };
+    var go = h("button", { type: "button", "class": "btn btn-primary btn-big", id: "start-go", text: "Start at #" + EQS[def].id,
+      onclick: function () { startAt(def); } });
+    var list = h("div", { "class": "start-list", role: "group", "aria-label": "Pick an equation" });
+    EQS.forEach(function (eq, i) {
+      list.appendChild(h("button", { type: "button", "class": "eqpick is-big" + (isDone(eq) ? " is-done" : "") + (i === def ? " is-default" : ""),
+        "data-start": eq.id, text: eq.id, "aria-label": "Start at equation " + eq.id + (isDone(eq) ? " (done on this computer)" : ""),
+        onclick: function () { startAt(i); } }));
+    });
+    var buttons = [go];
+    if (state.finished) buttons.push(h("button", { type: "button", "class": "btn", id: "start-results", text: "See the results", onclick: function () { hideStop(); completionScreen(); } }));
+    var nodes = [h("p", { "class": "stop-lead", text: "Where is your group starting?" }), list,
+      h("p", { "class": "stop-note", text: "Start at the first equation anyone in your group hasn\u2019t finished." }),
+      h("div", { "class": "stop-buttons" }, buttons)];
+    if (EQS.some(isDone)) nodes.push(h("p", { "class": "stop-note", text: "A \u2713 means it was finished on this computer." }));
+    showStop(nodes, go);
   }
 
   function completionScreen() {
@@ -487,9 +521,6 @@
   /* ---------- start ---------- */
 
   enterStep(EQS[state.current], rec(EQS[state.current]), true);
-  var started = saved && Object.keys(saved.eqs).some(function (id) {
-    var r = saved.eqs[id]; return r.built || r.solved || (r.model && (M.xCount(r.model.left) || r.model.left.c));
-  });
-  if (started && !(startEq >= 1)) welcomeScreen();
+  if (!(startEq >= 1)) startScreen();
   else if (state.current === 0 && !state.coachSeen) startCoach();
 })();

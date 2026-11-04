@@ -134,13 +134,17 @@
 
   /* Reflection breaks: after these equations, a stop screen with the prompt from the paper page (text exactly as printed). */
   BON.REFLECTIONS = {
-    7: [{ n: "1", text: "Look at the equations in your \u201cNo solutions\u201d column. What is the same about the two sides? What is different?" }],
-    9: [{ n: "2", text: "Equation 9 has a solution of 0. Explain why \u201cthe solution is 0\u201d is not the same as \u201cthere is no solution.\u201d" }],
-    10: [{ n: "3", text: "Look at the blue terms in each of your three columns. What do you notice?" }],
-    12: [{ n: "4a", text: "The slider broke. How can you tell just by looking that an equation has only one solution?" },
-         { n: "4b", text: "How can you tell just by looking that an equation has infinite solutions?" },
-         { n: "4c", text: "How can you tell just by looking that an equation has no solutions?" }]
+    7: [{ n: "1", text: "Look at the equations in your \u201cNo solutions\u201d column. What is the same about the two sides? What is different?" },
+        { n: "2", text: "If the equation is balanced no matter what value of x we choose on the slider, then ANY value seems to balance the equation. How many possible solutions are there for these types of equations?" }],
+    9: [{ n: "3", text: "Equation 9 has a solution of 0. Explain why \u201cthe solution is 0\u201d is not the same as \u201cthere is no solution.\u201d" }],
+    10: [{ n: "4", text: "Look at the blue terms in each of your three columns. What do you notice?" }],
+    12: [{ n: "5a", text: "The slider broke. How can you tell just by looking that an equation has only one solution?" },
+         { n: "5b", text: "How can you tell just by looking that an equation has infinite solutions?" },
+         { n: "5c", text: "How can you tell just by looking that an equation has no solutions?" }]
   };
+
+  /* The first always-balanced equation: a group talk prompt on its Compare screen, before the steps. */
+  BON.BRIDGE = { 6: "The slider balanced at every spot you tried. Name three values of x that work. Could you name them all? How many are there?" };
 
   /* Part 3 reasons (they appear only in Part 3). fits(k) says whether a reason describes an equation (k = its A, B, C, D). */
   BON.REASONS = [

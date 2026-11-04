@@ -24,6 +24,15 @@ The tool must NOT state the rule ("same x-terms, different constants means never
 
 Sequence per equation: **Build (or look at a given model) → Slide → one-tap check → Solve on the sheet → Compare steps → Write it on the reflection page → Next.** The slider comes before solving on purpose: its imperfection (x = 4/3 never levels) is what makes algebra necessary.
 
+## 1a. Classroom design: one Chromebook per group
+
+- **One Chromebook per group of about 3–4.** Groups re-randomize daily. The page is a group tool, so its wording says "your group" and "we."
+- **Roles.** One person drives the slider and keys. The rest watch the balance and say what they see. The prompt panel shows "Driver: switch this equation" on each new equation (a suggestion, not enforced).
+- **Group agreement before the check.** Slide step: "Talk it over: what do you see? Agree as a group, then tap." The one-tap check text is "What did the slider show? Agree as a group first."
+- **Solve on whiteboards, together.** The Solve screen tells the group to solve on a whiteboard together and talk through each step. Then each student copies the result onto their own solving sheet. The page never asks anyone to solve alone.
+- **Sorting is a group decision.** The reflection page's table is filled in as the group decides where each equation goes, and each student writes it in their own box. The Compare screen says "Decide as a group: which column?"
+- **Start screen is a choice, not a resume.** Because groups re-form daily and members may be at different spots, the load screen asks "Where is your group starting?" with a pick-an-equation list. The default is the last equation opened on this device. Suggest in small text: "Start at the first equation anyone in your group hasn't finished." No student name or login; all state stays per device.
+
 ## 2. Equation data
 
 All equations have the form Ax + B = Cx + D with these constraints:
@@ -152,19 +161,23 @@ Step strip: **Build ▸ Slide ▸ Check ▸ Solve ▸ Compare.** Whatever step t
 - Correct: continue. Wrong: everything dims except the slider, with "**Check the slider again.**" As soon as the student uses the slider, the screen relights and the question reopens. No retry limit, no scolding.
 
 ### Solve
-- Stop screen. Show the **equation large and centered** with its number, and the message: "**Solve #N on your sheet.** Circle what the slider showed, write where it balances, and solve it. Press 'I solved it' when you have an answer." Duplicating the check on paper is intentional (reinforcement); do not skip or shorten it.
+- Stop screen. Show the **equation large and centered** with its number, and the message: "**Solve #N together on your whiteboard.** Talk through each step. Then everyone copies it onto their own sheet: circle what the slider showed, write where it balances, and write your result. Press 'I solved it' when your group has an answer." Duplicating the check on paper is intentional (reinforcement); do not skip or shorten it.
 
 ### Compare
 - After "I solved it," show the **worked solution steps** (section 14) with "Compare with your work. Copy the correct steps onto your sheet." There is no wait timer, because the page no longer knows whether the student got it wrong.
 - Then: "Write this equation under **[One solution / Infinite solutions / No solutions]** on your reflection page." Then **Next equation**.
 
 ### Reflection breaks (stop screens)
-After Compare on certain equations, before Next, show a stop screen: "**Turn to your reflection page.** Do prompt N." with the prompt text in large type and a "Done, continue" button. Students do the writing on paper, not on the page.
-- After **#7**: prompt 1 (No-solutions column: what is the same, what is different)
-- After **#9**: prompt 2 (why "the solution is 0" is not "no solution")
-- After **#10**: prompt 3 (the blue terms in each column)
-- After **#12**: prompts 4a, 4b, 4c (how can you tell just by looking?)
+After Compare on certain equations, before Next, show a stop screen: "**Turn to your reflection page.** Talk it over as a group, then everyone writes." with the prompt text in large type and a "Done, continue" button. Students write on paper, not on the page.
+- After **#7**: prompt 2 (infinite: "If the equation is balanced no matter what value of x we choose on the slider, then ANY value seems to balance the equation. How many possible solutions are there for these types of equations?"). Prompt 1 (No-solutions column: same and different) is also asked here, since #4–5 and #1–7 are all sorted by then.
+- After **#9**: prompt 3 (why "the solution is 0" is not "no solution")
+- After **#10**: prompt 4 (blue terms in each column). This one stays mid-flow because it builds the pattern needed for Part 3.
+- After **#12**: prompts 5a, 5b, 5c (how can you tell just by looking?)
 Prompt text must match the paper reflection page exactly.
+(Open item: whether prompts 1, 3, and 5 move to the end of the whole sequence instead; teacher agreed to keep sorting as you go and prompt 4 after #10.)
+
+### Bridge to "infinite" (on #6)
+The first always-balanced equation is #6. On its Compare screen, before the worked steps, show a **"Talk with your group"** prompt: "The slider balanced at every spot you tried. Name three values of x that work. Could you name them all? How many are there?" Prompt 2 on the reflection page after #7 is the written version.
 
 ### Coach marks (equation 1 only, replayable with a "?")
 Short callouts, one element each: the equation, the palettes ("click to build each side"), the pans, the x-box ("this is x"), the slider ("heavier at the top, lighter at the bottom"), and the readout.
@@ -182,13 +195,13 @@ Short callouts, one element each: the equation, the palettes ("click to build ea
 ## 9. Paper companion sheets
 
 - **Solving sheet (2 pages, 12 problems), titled "What Makes It Balance?":** each of #1–10 has a circle line (**Sometimes balanced / Always balanced / Never balanced**), then "**Balanced when:** x = ___ / x is any number / not possible," open solving space, and "Result: ___ = ___". #11–12 use "My prediction: Sometimes / Always / Never balanced" and "because ___". Problem 3 is `x + 5 = 4x + 1`.
-- **Reflection page:** one box split into three columns headed **One solution / Infinite solutions / No solutions** (subtext under review: Balanced for exactly one value / Always balanced / Never balanced), where students write the actual equations. Prompts 1, 2, 3, then 4a, 4b, 4c.
+- **Reflection page (prompts: 1 No-solutions column, 2 Infinite, 3 zero, 4 blue terms, 5a-c how can you tell):** one box split into three columns headed **One solution / Infinite solutions / No solutions** (subtext under review: Balanced for exactly one value / Always balanced / Never balanced), where students write the actual equations. Prompts 1, 2, 3, then 4a, 4b, 4c.
 
 Equation numbers and display strings must match the paper exactly.
 
 ## 10. Navigation and state
 
-- Self-paced. The page walks students through the equations **in order** and never prompts them to click ahead, but the numbered equations in the step strip are **all clickable** so students can revisit or move between problems. Each equation keeps its own progress. Next and the reflection breaks follow the normal order. The full lesson runs about a day and a half, so progress must resume the next day: on load, show "Welcome back. Continue at #N" (or Start over).
+- Self-paced. The page walks students through the equations **in order** and never prompts them to click ahead, but the numbered equations in the step strip are **all clickable** so students can revisit or move between problems. Each equation keeps its own progress. Next and the reflection breaks follow the normal order. The full lesson runs about a day and a half, so progress must resume the next day: on load, show "Where is your group starting?" (see section 1a).
 - Teacher walkthrough: works on a projector. Keyboard shortcuts for next/back; large type.
 - State persists in `localStorage` (progress, check results) with a "Start over" button. Wrap storage in try/catch.
 - **Completion screen (version 1, on the student's own screen only):** for each of the 12 equations, show the category and whether the one-tap check was right on the first try. Nothing is sent anywhere.

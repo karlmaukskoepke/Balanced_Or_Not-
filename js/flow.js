@@ -18,7 +18,7 @@
     buildRight: "Look at the right side again.",
     buildBoth: "Look at both sides again.",
     lookModel: "Look at the model. Does it match the equation?",
-    checkQ: "What did the slider show?",
+    checkQ: "What did the slider show? Agree as a group first.",
     checkSlider: "Check the slider again."
   };
 

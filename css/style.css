@@ -278,6 +278,19 @@ body.is-spotlight .col-slide { position: relative; z-index: 60; box-shadow: 0 0 
 .spot-msg { margin: 0 0 0.3rem; font-weight: 700; font-size: 1.05rem; background: #FFF1B8; border: 2px solid var(--ink); border-radius: 8px; padding: 0.2rem 0.4rem; }
 .spot-msg:empty { display: none; }
 
+.prompt-driver { font-size: 0.82rem; font-weight: 700; color: var(--muted); border: 2px dashed var(--line); border-radius: 6px;
+  padding: 0.1rem 0.45rem; align-self: flex-start; }
+.prompt-group { font-size: 0.95rem; font-weight: 700; border-left: 5px solid var(--focus); padding: 0.15rem 0.5rem; background: #FFF8DC; border-radius: 4px; }
+.bridge { border: 2px solid var(--focus); background: #FFF8DC; border-radius: 10px; padding: 0.3rem 0.6rem; }
+.bridge p { margin: 0; font-size: 0.95rem; }
+.bridge .bridge-title { font-weight: 700; font-size: 1rem; }
+.prompt-col p { margin: 0; }
+.prompt-col { display: flex; flex-wrap: wrap; align-items: center; gap: 0.4rem; }
+.prompt .btn.btn-small-inline { min-height: 34px; font-size: 0.9rem; padding: 0.1rem 0.6rem; }
+.start-list { display: grid; grid-template-columns: repeat(6, auto); gap: 0.6rem; }
+.eqpick.is-big { width: 54px; height: 54px; font-size: 1.3rem; }
+.eqpick.is-default { box-shadow: 0 0 0 4px var(--focus); }
+
 /* the test page: the same screen with an equation picker in the right column */
 .picker { display: grid; grid-template-columns: repeat(6, 1fr); gap: 0.35rem; }
 .picker button { font: inherit; font-weight: 700; min-height: 40px; border: 2px solid var(--blue); border-radius: 50%;
@@ -287,8 +300,8 @@ body.is-spotlight .col-slide { position: relative; z-index: 60; box-shadow: 0 0 
 .prompt-q.is-compact { font-size: 1.12rem; }
 .prompt-q.is-compact .prompt-help { font-weight: 400; }
 
-/* shorter windows (1366 x 650): a little more room for the prompt panel */
-@media (max-height: 719px) {
+/* windows up to 800 tall (1366 x 650 and 1366 x 768): a little more room for the prompt panel */
+@media (max-height: 800px) {
   .stage { grid-template-columns: 196px minmax(0, 1fr) 352px; }
   .prompt-q { font-size: 1.12rem; }
   .prompt-help { font-size: 0.88rem; }

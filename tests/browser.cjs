@@ -197,11 +197,19 @@ const check = (ok, msg) => { console.log((ok ? "  ok  " : "  FAIL ") + msg); if 
     const slideThree = async () => { for (const v of ["1", "-2", "3"]) await type(v); await page.click("#enough-btn"); };
     const finishTo = async (cat) => { await page.click(`#prompt [data-cat=${cat}]`); await page.click("#solved-btn"); };
     await page.goto(base + "index.html?reset=1");
+    await page.waitForSelector("#stop:not([hidden])");
+    check((await stopText()).includes("Where is your group starting?") && (await stopText()).includes("Start at the first equation anyone in your group hasn\u2019t finished.") &&
+      (await page.$$("#stop [data-start]")).length === 12 && (await page.textContent("#start-go")) === "Start at #1",
+      `${tag}: start screen: "Where is your group starting?", twelve choices, default #1`);
+    await fits("start screen");
+    await page.screenshot({ path: `${OUT}/${tag}-start.png` });
+    await page.click("#start-go");
     await page.waitForSelector("#coach:not([hidden])");
     let n = 0; const texts = [];
     while (!(await page.isHidden("#coach")) && n < 10) { n++; texts.push(await page.textContent("#coach-text")); if (n === 1) await fits("coach marks"); await page.click("#coach-next"); }
     check(n === 6 && texts.some((t) => /build/i.test(t)) && texts.some((t) => /heavier at the top/.test(t)), `${tag} #1: six coach marks`);
-    check((await stepNow()) === "build" && (await page.$$(".eqpick")).length === 12, `${tag} #1: Build; twelve numbered equations in the top strip`);
+    check((await stepNow()) === "build" && (await page.$$(".eqstrip .eqpick")).length === 12, `${tag} #1: Build; twelve numbered equations in the top strip`);
+    check((await page.textContent("#prompt .prompt-driver")) === "Driver: switch this equation", `${tag} #1: "Driver: switch this equation" on a new equation`);
     await click("left", "x", 2); await click("left", "plus", 3); await click("right", "x"); await click("right", "minus");
     check((await angle()) === 0, `${tag} #1: the beam stays level while building`);
     await page.click("#built-btn");
@@ -215,9 +223,10 @@ const check = (ok, msg) => { console.log((ok ? "  ok  " : "  FAIL ") + msg); if 
     check(!(await page.$("#enough-btn")), `${tag} #1: no "I've seen enough" after two positions`);
     await type("4");
     check((await rel()) === "=" && !!(await page.$("#enough-btn")), `${tag} #1: gold = at 4; "I've seen enough" after three positions`);
+    check((await page.textContent("#prompt .prompt-group")) === "Talk it over: what do you see? Agree as a group, then tap.", `${tag} #1: Slide asks the group to agree`);
     await page.click("#enough-btn");
     const words = await page.$$eval("#prompt [data-cat]", (b) => b.map((x) => x.textContent));
-    check((await stepNow()) === "check" && (await page.textContent("#prompt .prompt-q")) === "What did the slider show?" &&
+    check((await stepNow()) === "check" && (await page.textContent("#prompt .prompt-q")) === "What did the slider show? Agree as a group first." &&
       words.join("|") === "Sometimes balanced|Always balanced|Never balanced", `${tag} #1: the one-tap check: Sometimes / Always / Never balanced`);
     // wrong answer: everything dims except the slider
     await page.click("#prompt [data-cat=never]");
@@ -238,12 +247,16 @@ const check = (ok, msg) => { console.log((ok ? "  ok  " : "  FAIL ") + msg); if 
     check(await page.isHidden("#veil") && !(await page.isDisabled("#prompt [data-cat=one]")), `${tag} #1: using the slider relights the screen and reopens the question`);
     await page.click("#prompt [data-cat=one]");
     // Solve stop screen
-    check((await stepNow()) === "solve" && (await stopText()).includes("Solve #1 on your sheet.") && (await page.textContent("#stop .eq-number")) === "1" &&
+    check((await stepNow()) === "solve" && (await stopText()).includes("Solve #1 together on your whiteboard.") &&
+      (await stopText()).includes("Then everyone copies it onto their own sheet") && (await stopText()).includes("when your group has an answer") && (await page.textContent("#stop .eq-number")) === "1" &&
       (await page.$eval("#stop .eqline", (e) => e.textContent.replace(/\s+/g, " ").trim())) === "2x + 3 = x + 7", `${tag} #1: Solve stop screen: the equation large with its number`);
     await fits("solve screen");
     await page.screenshot({ path: `${OUT}/${tag}-solve.png` });
     await page.click("#solved-btn");
     // Compare
+    check((await page.textContent("#col-box")).includes("Decide as a group: which column?") && !(await page.textContent("#col-box")).includes("One solution"),
+      `${tag} #1: Compare asks "Decide as a group: which column?" before showing it`);
+    await page.click("#col-btn");
     const work = await page.$$eval("#prompt .work > span", (s) => s.map((x) => x.textContent));
     check((await stepNow()) === "compare" && work.join(" ").includes("+ (−x)") && work.join(" ").includes("x + 3 = 7") &&
       (await page.textContent("#prompt")).includes("Check: 2(4) + 3 = 11 and 4 + 7 = 11") && (await page.textContent(".prompt-col")).includes("One solution"),
@@ -254,9 +267,9 @@ const check = (ok, msg) => { console.log((ok ? "  ok  " : "  FAIL ") + msg); if 
     check(await page.$eval('.eqpick[aria-label^="Equation 1"]', (b) => b.classList.contains("is-done")), `${tag}: #1 is marked done in the strip`);
     // saved progress
     await page.reload(); await page.waitForSelector("#stop:not([hidden])");
-    check((await stopText()).includes("Welcome back. Continue at #2."), `${tag}: after a refresh: "Welcome back. Continue at #2."`);
-    await fits("welcome back");
-    await page.click("#welcome-go");
+    check((await stopText()).includes("Where is your group starting?") && (await page.textContent("#start-go")) === "Start at #2" &&
+      await page.$eval('#stop [data-start="1"]', (b) => b.classList.contains("is-done")), `${tag}: after a refresh: the start screen defaults to #2 (last opened); #1 shows done`);
+    await page.click("#start-go");
     check((await page.textContent("#eq-number")) === "2", `${tag}: Continue at #2 opens #2`);
     // the strip: any equation is clickable; each keeps its own progress
     await page.click('.eqpick[aria-label^="Equation 7"]');
@@ -269,9 +282,10 @@ const check = (ok, msg) => { console.log((ok ? "  ok  " : "  FAIL ") + msg); if 
     await finishTo("always");
     await page.click("#next-eq");
     const r7 = await stopText();
-    check(r7.includes("Turn to your reflection page.") && r7.includes("Do prompt 1.") &&
-      r7.includes("Look at the equations in your “No solutions” column. What is the same about the two sides? What is different?"),
-      `${tag}: after #7: reflection break with prompt 1, word for word`);
+    check(r7.includes("Turn to your reflection page.") && r7.includes("Talk it over as a group, then everyone writes.") && r7.includes("Do prompts 1 and 2.") &&
+      r7.includes("Look at the equations in your “No solutions” column. What is the same about the two sides? What is different?") &&
+      r7.includes("If the equation is balanced no matter what value of x we choose on the slider, then ANY value seems to balance the equation. How many possible solutions are there for these types of equations?"),
+      `${tag}: after #7: reflection break with prompts 1 and 2`);
     await fits("reflection break");
     await page.click("#reflect-done");
     check((await page.textContent("#eq-number")) === "8", `${tag}: Done, continue -> #8`);
@@ -288,8 +302,9 @@ const check = (ok, msg) => { console.log((ok ? "  ok  " : "  FAIL ") + msg); if 
     await fits("Part 3 counterexample");
     await page.screenshot({ path: `${OUT}/${tag}-part3.png` });
     await page.click("#prompt [data-cat=never]"); await page.click('#prompt [data-reason="same-diff"]'); await page.click("#predict-btn");
-    check((await stopText()).includes("Solve #11 on your sheet."), `${tag} #11: the right prediction -> Solve`);
+    check((await stopText()).includes("Solve #11 together on your whiteboard."), `${tag} #11: the right prediction -> Solve`);
     await page.click("#solved-btn");
+    await page.click("#col-btn");
     check((await page.textContent("#prompt")).includes("never true") && (await page.textContent(".prompt-col")).includes("No solutions"), `${tag} #11: Compare steps`);
     // #12 then the last reflection and the completion screen
     await page.click("#next-eq");
@@ -300,8 +315,8 @@ const check = (ok, msg) => { console.log((ok ? "  ok  " : "  FAIL ") + msg); if 
     await page.screenshot({ path: `${OUT}/${tag}-compare12.png` });
     await page.click("#next-eq");
     const r12 = await stopText();
-    check(r12.includes("Do prompts 4a, 4b and 4c.") && r12.includes("How can you tell just by looking that an equation has no solutions?"), `${tag}: after #12: prompts 4a, 4b, 4c`);
-    await fits("reflection 4a-4c");
+    check(r12.includes("Do prompts 5a, 5b and 5c.") && r12.includes("How can you tell just by looking that an equation has no solutions?"), `${tag}: after #12: prompts 5a, 5b, 5c`);
+    await fits("reflection 5a-5c");
     await page.click("#reflect-done");
     const rows = await page.$$eval("#stop .results tbody tr", (t) => t.map((r) => [...r.querySelectorAll("td")].map((c) => c.textContent)));
     check(rows.length === 12 && rows[0][1] === "One solution" && /Not the first time/.test(rows[0][2]) && /Yes/.test(rows[6][2]) &&
@@ -316,10 +331,18 @@ const check = (ok, msg) => { console.log((ok ? "  ok  " : "  FAIL ") + msg); if 
     await page.click("#built-btn"); await slideThree(); await finishTo("one");
     await fits("Compare #2 (three steps)");
     // start over
+    // the bridge to "infinite" on #6
+    await page.click('.eqpick[aria-label^="Equation 6"]');
+    await page.click("#continue-btn"); await slideThree(); await finishTo("always");
+    const kids = await page.$$eval("#prompt > *", (k) => k.map((e) => e.className));
+    check(kids[0] === "bridge" && (await page.textContent("#prompt .bridge")).includes("Name three values of x that work. Could you name them all? How many are there?") &&
+      kids.indexOf("bridge") < kids.indexOf("work-wrap"), `${tag} #6: "Talk with your group" bridge before the worked steps`);
+    await fits("#6 bridge and steps");
+    await page.screenshot({ path: `${OUT}/${tag}-bridge6.png` });
     await page.click("#start-over");
-    check((await page.textContent("#eq-number")) === "1" && (await stepNow()) === "build" && !(await page.$(".eqpick.is-done")), `${tag}: Start over clears everything`);
-    await page.reload(); await page.waitForTimeout(200);
-    check(await page.isHidden("#stop"), `${tag}: after Start over, no "Welcome back"`);
+    check((await page.textContent("#eq-number")) === "1" && (await stepNow()) === "build" && !(await page.$(".eqstrip .eqpick.is-done")), `${tag}: Start over clears everything`);
+    await page.reload(); await page.waitForSelector("#stop:not([hidden])");
+    check((await page.textContent("#start-go")) === "Start at #1" && !(await page.$("#stop .is-done")), `${tag}: after Start over, the start screen shows nothing done`);
     check(errors.length === 0, `${tag}: no script errors ${errors.join("; ")}`);
     await page.close();
   }
