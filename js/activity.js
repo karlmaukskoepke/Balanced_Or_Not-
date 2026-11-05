@@ -9,7 +9,8 @@
  * Navigation: the page walks through in order; every numbered equation in the top strip is clickable and
  * keeps its own progress. Progress is saved in this browser; the load screen asks "Where is your group starting?".
  *
- * Address options (for the teacher): ?eq=4 open equation 4 · ?reset=1 clear saved progress first.
+ * Address options (for the teacher): ?eq=4 open equation 4 · ?reset (or ?reset=1) clears all saved progress on this
+ * computer, removes itself from the address bar without reloading, and opens equation 1.
  */
 (function () {
   "use strict";
@@ -23,10 +24,17 @@
 
   /* ---------- saved progress ---------- */
 
+  var OLD_KEYS = ["balanced-or-not-v1", "what-makes-it-balance-v2"]; // earlier versions of this page
+  var resetting = params.has("reset");
+  /* Clear everything this page has saved on this computer (the same for ?reset and Start over). */
+  function clearSaved() {
+    [KEY].concat(OLD_KEYS).forEach(function (k) { try { localStorage.removeItem(k); } catch (e) { /* storage blocked */ } });
+  }
+
   function blank() { return { current: 0, coachSeen: false, eqs: {}, reflections: {}, finished: false }; }
   function load() {
     try {
-      if (params.get("reset") === "1") localStorage.removeItem(KEY);
+      if (resetting) clearSaved();
       var s = JSON.parse(localStorage.getItem(KEY) || "null");
       if (s && s.eqs && s.reflections) return s;
     } catch (e) { /* storage blocked or unreadable: start fresh */ }
@@ -35,7 +43,7 @@
   function save() { try { localStorage.setItem(KEY, JSON.stringify(state)); } catch (e) { /* keep working without saving */ } }
   var saved = load();
   var state = saved || blank();
-  if (params.get("reset") === "1") {
+  if (resetting) {
     params.delete("reset");
     try { history.replaceState(null, "", location.pathname + (params.toString() ? "?" + params : "")); } catch (e) { /* ignore */ }
   }
@@ -470,7 +478,7 @@
   });
   function startOver() {
     if (!window.confirm("Start over? This clears all your work on this computer.")) return;
-    try { localStorage.removeItem(KEY); } catch (e) { /* nothing saved */ }
+    clearSaved();
     state = blank(); state.coachSeen = true;
     hideStop();
     enterStep(EQS[0], rec(EQS[0]), true);
@@ -521,6 +529,7 @@
   /* ---------- start ---------- */
 
   enterStep(EQS[state.current], rec(EQS[state.current]), true);
-  if (!(startEq >= 1)) startScreen();
+  if (resetting && !(startEq >= 1)) { if (!state.coachSeen) startCoach(); } // a teacher reset opens #1 directly
+  else if (!(startEq >= 1)) startScreen();
   else if (state.current === 0 && !state.coachSeen) startCoach();
 })();

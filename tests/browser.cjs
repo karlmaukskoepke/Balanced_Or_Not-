@@ -196,15 +196,33 @@ const check = (ok, msg) => { console.log((ok ? "  ok  " : "  FAIL ") + msg); if 
     const click = async (side, act, times = 1) => { for (let i = 0; i < times; i++) await page.click(`.palette[data-side=${side}] [data-act=${act}]`); };
     const slideThree = async () => { for (const v of ["1", "-2", "3"]) await type(v); await page.click("#enough-btn"); };
     const finishTo = async (cat) => { await page.click(`#prompt [data-cat=${cat}]`); await page.click("#solved-btn"); };
-    await page.goto(base + "index.html?reset=1");
+    await page.goto(base + "index.html");          // a fresh computer: the start screen
     await page.waitForSelector("#stop:not([hidden])");
     check((await stopText()).includes("Where is your group starting?") && (await stopText()).includes("Start at the first equation anyone in your group hasn\u2019t finished.") &&
       (await page.$$("#stop [data-start]")).length === 12 && (await page.textContent("#start-go")) === "Start at #1",
       `${tag}: start screen: "Where is your group starting?", twelve choices, default #1`);
     await fits("start screen");
     await page.screenshot({ path: `${OUT}/${tag}-start.png` });
-    await page.click("#start-go");
+    // teacher reset: saved progress (this version and an older one) is cleared, ?reset leaves the address, #1 opens
+    await page.evaluate(() => {
+      localStorage.setItem("what-makes-it-balance-v3", JSON.stringify({ current: 6, coachSeen: true, finished: true,
+        eqs: { 1: { built: true, solved: true, positions: [], slid: true, check: { done: true, wrongs: 0 }, p3: { done: false, wrongs: 0 } } }, reflections: { 7: true } }));
+      localStorage.setItem("what-makes-it-balance-v2", "{}");
+    });
+    const navs = [];
+    const onLoad = () => navs.push(1); page.on("load", onLoad);
+    await page.goto(base + "index.html?reset");
     await page.waitForSelector("#coach:not([hidden])");
+    await page.waitForTimeout(150);
+    const rs = await page.evaluate(() => {
+      const v3 = JSON.parse(localStorage.getItem("what-makes-it-balance-v3") || "null");
+      return { search: location.search, v2: localStorage.getItem("what-makes-it-balance-v2"),
+        solved: !!(v3 && v3.eqs && v3.eqs[1] && v3.eqs[1].solved), reflections: v3 ? Object.keys(v3.reflections).length : 0,
+        stop: document.getElementById("stop").hidden, eq: document.getElementById("eq-number").textContent };
+    });
+    check(rs.search === "" && rs.v2 === null && !rs.solved && rs.reflections === 0 && rs.stop && rs.eq === "1" && navs.length === 1,
+      `${tag}: ?reset clears all saved progress, leaves the address bar without reloading, opens #1 (${JSON.stringify(rs)}, ${navs.length} load)`);
+    page.off("load", onLoad);
     let n = 0; const texts = [];
     while (!(await page.isHidden("#coach")) && n < 10) { n++; texts.push(await page.textContent("#coach-text")); if (n === 1) await fits("coach marks"); await page.click("#coach-next"); }
     check(n === 6 && texts.some((t) => /build/i.test(t)) && texts.some((t) => /heavier at the top/.test(t)), `${tag} #1: six coach marks`);
@@ -339,8 +357,15 @@ const check = (ok, msg) => { console.log((ok ? "  ok  " : "  FAIL ") + msg); if 
       kids.indexOf("bridge") < kids.indexOf("work-wrap"), `${tag} #6: "Talk with your group" bridge before the worked steps`);
     await fits("#6 bridge and steps");
     await page.screenshot({ path: `${OUT}/${tag}-bridge6.png` });
+    await page.evaluate(() => localStorage.setItem("what-makes-it-balance-v2", "{}"));
     await page.click("#start-over");
-    check((await page.textContent("#eq-number")) === "1" && (await stepNow()) === "build" && !(await page.$(".eqstrip .eqpick.is-done")), `${tag}: Start over clears everything`);
+    const so = await page.evaluate(() => {
+      const v3 = JSON.parse(localStorage.getItem("what-makes-it-balance-v3") || "null");
+      return { v2: localStorage.getItem("what-makes-it-balance-v2"), solved: v3 ? Object.values(v3.eqs).filter((r) => r.solved).length : 0,
+        reflections: v3 ? Object.keys(v3.reflections).length : 0 };
+    });
+    check((await page.textContent("#eq-number")) === "1" && (await stepNow()) === "build" && !(await page.$(".eqstrip .eqpick.is-done")) &&
+      so.v2 === null && so.solved === 0 && so.reflections === 0, `${tag}: Start over clears the same saved data as ?reset (${JSON.stringify(so)})`);
     await page.reload(); await page.waitForSelector("#stop:not([hidden])");
     check((await page.textContent("#start-go")) === "Start at #1" && !(await page.$("#stop .is-done")), `${tag}: after Start over, the start screen shows nothing done`);
     check(errors.length === 0, `${tag}: no script errors ${errors.join("; ")}`);

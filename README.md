@@ -10,7 +10,7 @@ straight from the `main` branch (Settings → Pages → Deploy from a branch →
 
 - `index.html`: the student activity (spec v3): Build, Slide, the one-tap check, Solve, Compare, reflection breaks,
   Part 3 and the completion screen. Progress is saved in the browser. Address options: `?eq=4` opens equation 4,
-  `?reset=1` clears saved progress.
+  `?reset` clears all saved progress on that computer and opens #1.
 - `balance-test.html`: test page. Any of the 12 equations, pre-built, slider always on. `?eq=3&x=4/3`.
 - `teachers.html`: printable sheets to download.
 
