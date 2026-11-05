@@ -24,7 +24,7 @@ straight from the `main` branch (Settings → Pages → Deploy from a branch →
 - `js/vslider.js`: the vertical number-line slider (snap, keys).
 - `js/explore.js`: keeps the slider, typed box, balance, x-box and readout in step.
 - `js/activity.js`: the student page. `js/balance-test.js`: the test page.
-- `reference/`: the paper sheets (solving sheet, reflection page) as PDFs.
+- `reference/`: the paper sheets (solving sheet, reflection page, practice sheet) as PDFs.
 
 ## Tests
 
